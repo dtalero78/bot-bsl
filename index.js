@@ -66,6 +66,15 @@ INDICACIONES ADICIONALES:
 - Si necesita prueba psicosensométrica, es obligatorio presencial.
 - Si el usuario necesita descargar un certificado lo puede hacer desde: www.bsl.com.co/descargar
 
+📅 CONSULTA DE CITA:
+
+- Si el usuario pregunta por su cita (por ejemplo: "¿Cuándo es mi cita?", "Tengo una cita hoy?", "Me pueden confirmar mi cita?") y **no menciona su número de documento**, respóndele así:
+
+"Claro, para ayudarte necesito tu número de documento. Por favor escríbelo."
+
+- Si el número ya fue enviado antes en la conversación, úsalo directamente para consultar en la base de datos y entrega la respuesta con los datos encontrados.
+
+
 🔴 DETENCIÓN DEL BOT:
 
 - Si el usuario dice que quiere hablar con un asesor, o pide ayuda de una persona, **escribe internamente la frase especial exacta: "...transfiriendo con asesor"** SIN NINGUN PUNTO AL FINAL. Eso hará que el sistema detenga el bot.
@@ -137,7 +146,7 @@ app.post('/soporte', async (req, res) => {
         if (message.from_me === true || message.from === BOT_NUMBER) {
             const bodyText = message?.text?.body?.trim();
 
-if (bodyText === "...transfiriendo con asesor" || bodyText === "...transfiriendo con asesor.") {
+            if (bodyText === "...transfiriendo con asesor" || bodyText === "...transfiriendo con asesor.") {
                 console.log(`🛑 Bot desactivado manualmente para ${message.chat_id}`);
 
                 await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
@@ -249,6 +258,57 @@ if (bodyText === "...transfiriendo con asesor" || bodyText === "...transfiriendo
         // 📝 Procesamiento de texto
         if (tipo === "text" && message.text?.body) {
             const userMessage = message.text.body;
+
+            // Pregunta sobre cita sin número
+            if (userMessage.toLowerCase().includes("cita") && !userMessage.match(/\b\d{6,10}\b/)) {
+                const mensaje = "Claro, para ayudarte necesito tu número de documento. Por favor escríbelo.";
+                await sendMessage(to, mensaje);
+
+                const nuevoHistorial = [
+                    ...mensajesHistorial,
+                    { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+                    { from: "sistema", mensaje, timestamp: new Date().toISOString() }
+                ];
+                await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+
+                return res.json({ success: true, mensaje: "Solicitud de documento enviada al usuario." });
+            }
+
+const documentoMatch = userMessage.match(/\b\d{6,10}\b/);
+const numeroId = documentoMatch?.[0];
+
+            if (userMessage.toLowerCase().includes("cita") && documentoMatch) {
+                const numeroId = documentoMatch[0];
+
+                console.log(`📄 Buscando cita para documento: ${numeroId}`);
+
+                const response = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${numeroId}`);
+                const data = await response.json();
+
+                if (data && data.found) {
+                    const mensaje = `✅ Cita encontrada:
+- Documento: ${data.numeroId}
+- Nombre: ${data.nombreCompleto}
+- Fecha: ${data.fechaAtencion}`;
+
+                    await sendMessage(to, mensaje);
+
+                    const nuevoHistorial = [
+                        ...mensajesHistorial,
+                        { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+                        { from: "sistema", mensaje, timestamp: new Date().toISOString() }
+                    ];
+                    await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+
+                    return res.json({ success: true, mensaje: "Consulta de cita procesada." });
+                } else {
+                    const mensaje = "❌ No encontramos una cita registrada con ese número de documento.";
+                    await sendMessage(to, mensaje);
+                    return res.json({ success: true, mensaje });
+                }
+            }
+
+
 
             const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
                 method: 'POST',
