@@ -83,7 +83,7 @@ app.post('/soporte', async (req, res) => {
         // ✅ Obtener conversación con stopBot incluido
         const { mensajes: mensajesHistorial = [], stopBot = false } = await obtenerConversacionDeWix(from);
 
-        if (stopBot === true || stopBot === "true") {
+if (stopBot === true || String(stopBot).toLowerCase() === "true") {
             console.log(`[STOP] Usuario bloqueado por stopBot: ${from}`);
             return res.json({ success: true, mensaje: "Usuario bloqueado por stopBot." });
         }
