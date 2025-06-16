@@ -34,16 +34,21 @@ async function guardarConversacionEnWix({ userId, nombre, mensajes }) {
 }
 
 async function obtenerConversacionDeWix(userId) {
-  try {
-    const resp = await fetch(`https://www.bsl.com.co/_functions/obtenerConversacion?userId=${encodeURIComponent(userId)}`);
-    if (!resp.ok) return { mensajes: [], observaciones: "" };
-    const json = await resp.json();
-    return json;
-  } catch (err) {
-    console.error("Error obteniendo historial de Wix:", err);
-    return { mensajes: [], observaciones: "" };
-  }
+    try {
+        const resp = await fetch(`https://www.bsl.com.co/_functions/obtenerConversacion?userId=${encodeURIComponent(userId)}`);
+        if (!resp.ok) return { mensajes: [], observaciones: "" };
+
+        const json = await resp.json();
+        const mensajes = json.mensajes || [];
+        const observaciones = json.observaciones || "";
+
+        return { mensajes, observaciones };
+    } catch (err) {
+        console.error("Error obteniendo historial de Wix:", err);
+        return { mensajes: [], observaciones: "" };
+    }
 }
+
 
 
 async function sendMessage(to, body) {
@@ -82,12 +87,13 @@ app.post('/soporte', async (req, res) => {
         const to = chatId || `${from}@s.whatsapp.net`;
 
         // ✅ Obtener conversación con stopBot incluido
-        const { mensajes: mensajesHistorial = [], stopBot = false } = await obtenerConversacionDeWix(from);
+        const { mensajes: mensajesHistorial = [], observaciones = "" } = await obtenerConversacionDeWix(from);
 
-if (String(observaciones).toLowerCase().includes("stop")) {
-  console.log(`[STOP] Usuario bloqueado por campo 'observaciones': ${from}`);
-  return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones." });
-}
+        if (String(observaciones).toLowerCase().includes("stop")) {
+            console.log(`[STOP] Usuario bloqueado por observaciones: ${from}`);
+            return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones." });
+        }
+
 
 
         // 🖼 Procesamiento de imagen
