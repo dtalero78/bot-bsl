@@ -34,16 +34,17 @@ async function guardarConversacionEnWix({ userId, nombre, mensajes }) {
 }
 
 async function obtenerConversacionDeWix(userId) {
-    try {
-        const resp = await fetch(`https://www.bsl.com.co/_functions/obtenerConversacion?userId=${encodeURIComponent(userId)}`);
-        if (!resp.ok) return { mensajes: [], stopBot: false };
-        const json = await resp.json();
-        return json;
-    } catch (err) {
-        console.error("Error obteniendo historial de Wix:", err);
-        return { mensajes: [], stopBot: false };
-    }
+  try {
+    const resp = await fetch(`https://www.bsl.com.co/_functions/obtenerConversacion?userId=${encodeURIComponent(userId)}`);
+    if (!resp.ok) return { mensajes: [], observaciones: "" };
+    const json = await resp.json();
+    return json;
+  } catch (err) {
+    console.error("Error obteniendo historial de Wix:", err);
+    return { mensajes: [], observaciones: "" };
+  }
 }
+
 
 async function sendMessage(to, body) {
     const url = "https://gate.whapi.cloud/messages/text";
@@ -83,10 +84,9 @@ app.post('/soporte', async (req, res) => {
         // ✅ Obtener conversación con stopBot incluido
         const { mensajes: mensajesHistorial = [], stopBot = false } = await obtenerConversacionDeWix(from);
 
-        const stop = stopBot === true || stopBot === "true" || stopBot === 1 || stopBot === "1";
-if (stop) {
-  console.log(`[STOP] Usuario bloqueado por stopBot: ${from}`);
-  return res.json({ success: true, mensaje: "Usuario bloqueado por stopBot." });
+if (String(observaciones).toLowerCase().includes("stop")) {
+  console.log(`[STOP] Usuario bloqueado por campo 'observaciones': ${from}`);
+  return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones." });
 }
 
 
