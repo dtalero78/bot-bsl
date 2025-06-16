@@ -11,7 +11,45 @@ const BOT_NUMBER = "573008021701";
 
 const promptInstitucional = `
 Eres un asistente virtual para exámenes médicos ocupacionales de la empresa BSL en Colombia...
-[puedes reemplazar con el texto completo si lo necesitas]
+INFORMACIÓN INSTITUCIONAL:
+
+1. Exámenes Ocupacionales:
+   - Virtual: $46.000 COP
+     - Pasos: Escoge la hora, realiza las pruebas en línea, un médico te contactará, paga y descarga tu certificado al instante.
+     - Incluye: Médico Osteomuscular, Audiometría, Optometría.
+     - Extras disponibles (pueden tener costo adicional): 
+       - Cardiovascular ($5.000), Vascular ($5.000), Espirometría ($5.000), Psicológico ($15.000), Dermatológico ($5.000), Perfil lipídico y otros laboratorios.
+    - Para crear la orden hay que diligenciar el siguiente link: www.bsl.com.co/nuevaorden-1
+
+   - Presencial: $69.000 COP
+     - Lugar: Calle 134 No. 7-83, Bogotá.
+     - Horario: Lunes a Viernes 7:30 AM - 4:30 PM, Sábados 8:00 AM - 11:30 AM.
+     - No necesita agendar, es por orden de llegada.
+     - Incluye lo mismo que el virtual.
+
+2. Pagos y descarga de certificados:
+   - Bancolombia: Cta Ahorros 44291192456, cédula 79981585
+   - Daviplata: 3014400818
+   - Nequi: 3008021701
+
+3. Sobre el servicio virtual:
+   - Escoge la hora, realiza las pruebas, el médico te contacta, pagas y descargas tu certificado.
+
+4. Incluido en el certificado básico:
+   - Médico Osteomuscular
+   - Audiometría
+   - Optometría
+
+5. Extras opcionales:
+   - Cardiovascular ($5.000)
+   - Vascular ($5.000)
+   - Espirometría ($5.000)
+   - Psicológico ($15.000)
+   - Dermatológico ($5.000)
+   - Perfil lipídico (60.000)
+   - Glicemia (20.000)
+
+SI PREGUNTAN CUALQUIER COSA QUE NO TENGA QUE VER CON ESTA INFORMACIÓN DI: "LO SIENTO. NO PUEDO COLABORARTE CON ESA INFORMACIÓN"
 `;
 
 async function guardarConversacionEnWix({ userId, nombre, mensajes }) {
@@ -75,31 +113,39 @@ app.post('/soporte', async (req, res) => {
         }
 
         const message = body.messages[0];
-       if (message.from_me === true || message.from === BOT_NUMBER) {
-    const bodyText = message.text?.body || "";
+        if (message.from_me === true || message.from === BOT_NUMBER) {
+            const bodyText = message?.text?.body?.trim();
 
-    if (bodyText === "...transfiriendo con asesor") {
-        const chatId = message.chat_id?.split("@")[0] || message.from;
-        console.log(`🛑 Bot desactivado manualmente por mensaje especial "${bodyText}" para ${chatId}`);
+            if (bodyText === "...transfiriendo con asesor") {
+                console.log(`🛑 Bot desactivado manualmente para ${message.chat_id}`);
 
-        // Actualizar campo observaciones a "stop"
-        try {
-            await fetch('https://www.bsl.com.co/_functions/guardarObservacion', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userId: chatId,
-                    observaciones: "stop"
-                })
-            });
-        } catch (err) {
-            console.error("❌ Error actualizando observaciones:", err);
+                await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: message.chat_id.split("@")[0],
+                        observaciones: "stop"
+                    })
+                });
+            }
+
+            if (bodyText === "...te dejo con el bot 🤖") {
+                console.log(`✅ Bot reactivado manualmente para ${message.chat_id}`);
+
+                await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: message.chat_id.split("@")[0],
+                        observaciones: ""
+                    })
+                });
+            }
+
+
+            console.log("Mensaje enviado por el bot, ignorado.");
+            return res.json({ success: true, mensaje: "Mensaje enviado por el bot, no procesado." });
         }
-    }
-
-    console.log("Mensaje enviado por el bot, ignorado.");
-    return res.json({ success: true, mensaje: "Mensaje enviado por el bot, no procesado." });
-}
 
 
         const from = message.from;
@@ -110,12 +156,12 @@ app.post('/soporte', async (req, res) => {
 
         // ✅ Obtener conversación con stopBot incluido
         const { mensajes: mensajesHistorial = [], observaciones = "" } = await obtenerConversacionDeWix(from);
-console.log(`[WIX] Consulta previa | userId: ${from} | observaciones: ${observaciones}`);
+        console.log(`[WIX] Consulta previa | userId: ${from} | observaciones: ${observaciones}`);
 
-if (String(observaciones).toLowerCase().includes("stop")) {
-    console.log(`[STOP] Usuario bloqueado por observaciones: ${from}`);
-    return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones (silencioso)." });
-}
+        if (String(observaciones).toLowerCase().includes("stop")) {
+            console.log(`[STOP] Usuario bloqueado por observaciones: ${from}`);
+            return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones (silencioso)." });
+        }
 
 
 
