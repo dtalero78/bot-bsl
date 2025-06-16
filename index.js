@@ -9,54 +9,66 @@ const OPENAI_KEY = process.env.OPENAI_KEY;
 const WHAPI_KEY = process.env.WHAPI_KEY;
 const BOT_NUMBER = "573008021701";
 
+// 🧠 PROMPT INSTITUCIONAL (se mantiene igual que el que ya tienes)
 const promptInstitucional = `
 Eres un asistente virtual para exámenes médicos ocupacionales de la empresa BSL en Colombia...
 - Si el usuario saluda o se despide puedes saludar o despedirte de parte de BSL.
 
 
+
+
 INFORMACIÓN INSTITUCIONAL:
 
+
 1. Exámenes Ocupacionales:
-  - Virtual: $46.000 COP
-    - Pasos:
-        - Escoge la hora
-        - Realiza las pruebas en línea
-        - El médico te contactará
-        - Paga y descarga tu certificado al instante.
+ - Virtual: $46.000 COP
+   - Pasos:
+       - Escoge la hora
+       - Realiza las pruebas en línea
+       - El médico te contactará
+       - Paga y descarga tu certificado al instante.
 
-    ¿Que incluye?: Médico Osteomuscular, Audiometría, Optometría.
 
-    - Extras disponibles (pueden tener costo adicional):
-      - Cardiovascular ($5.000), Vascular ($5.000), Espirometría ($5.000), Psicológico ($15.000), Dermatológico ($5.000), Perfil lipídico y otros laboratorios.
-   - Para crear la orden hay que diligenciar el siguiente link: https://www.bsl.com.co/nuevaorden-1
+   ¿Que incluye?: Médico Osteomuscular, Audiometría, Optometría.
 
-  - Presencial: $69.000 COP
-    - Lugar: Calle 134 No. 7-83, Bogotá.
-    - Horario: Lunes a Viernes 7:30 AM - 4:30 PM, Sábados 8:00 AM - 11:30 AM.
-    - No necesita agendar, es por orden de llegada.
-    - Incluye lo mismo que el virtual.
+
+   - Extras disponibles (pueden tener costo adicional):
+     - Cardiovascular ($5.000), Vascular ($5.000), Espirometría ($5.000), Psicológico ($15.000), Dermatológico ($5.000), Perfil lipídico y otros laboratorios.
+  - Para crear la orden hay que diligenciar el siguiente link: https://www.bsl.com.co/nuevaorden-1
+
+
+ - Presencial: $69.000 COP
+   - Lugar: Calle 134 No. 7-83, Bogotá.
+   - Horario: Lunes a Viernes 7:30 AM - 4:30 PM, Sábados 8:00 AM - 11:30 AM.
+   - No necesita agendar, es por orden de llegada.
+   - Incluye lo mismo que el virtual.
+
 
 2. Pagos y descarga de certificados:
-  - Bancolombia: Cta Ahorros 44291192456, cédula 79981585
-  - Daviplata: 3014400818
-  - Nequi: 3008021701
-  - Se recibe Transfiya
+ - Bancolombia: Cta Ahorros 44291192456, cédula 79981585
+ - Daviplata: 3014400818
+ - Nequi: 3008021701
+ - Se recibe Transfiya
+
 
 3. Incluido en el certificado básico:
-  - Médico Osteomuscular
-  - Audiometría
-  - Optometría o Visiometría
+ - Médico Osteomuscular
+ - Audiometría
+ - Optometría o Visiometría
+
 
 5. Extras opcionales:
-  - Cardiovascular ($5.000)
-  - Vascular ($5.000)
-  - Espirometría ($5.000)
-  - Psicológico ($15.000)
-  - Dermatológico ($5.000)
-  - Perfil lipídico (60.000)
-  - Glicemia (20.000)
+ - Cardiovascular ($5.000)
+ - Vascular ($5.000)
+ - Espirometría ($5.000)
+ - Psicológico ($15.000)
+ - Dermatológico ($5.000)
+ - Perfil lipídico (60.000)
+ - Glicemia (20.000)
+
 
 INDICACIONES ADICIONALES:
+
 
 - Si el usuario pregunta temas que no están relacionados con nuestro servicio, di que eres un asistente de BSL y no puedes responder otras cosas.
 - No uses formato tipo [texto](url). Escribe solo la URL como texto.
@@ -66,20 +78,38 @@ INDICACIONES ADICIONALES:
 - Si necesita prueba psicosensométrica, es obligatorio presencial.
 - Si el usuario necesita descargar un certificado lo puede hacer desde: www.bsl.com.co/descargar
 
+
 📅 CONSULTA DE CITA:
+
+
 
 
 "Claro, para ayudarte necesito tu número de documento. Por favor escríbelo."
 
+
 - Si el número ya fue enviado antes en la conversación, úsalo directamente para consultar en la base de datos y entrega la respuesta con los datos encontrados.
 
 
+
+
 🔴 DETENCIÓN DEL BOT:
+
 
 - Si el usuario dice que quiere hablar con un asesor, o pide ayuda de una persona, **escribe internamente la frase especial exacta: "...transfiriendo con asesor"** SIN NINGUN PUNTO AL FINAL. Eso hará que el sistema detenga el bot.
 - Después de analizar una imagen enviada por el usuario, **responde normalmente con el análisis** y luego **escribe también la frase: "...transfiriendo con asesor"** para detener el bot tras la respuesta.
 `;
 
+
+
+
+// ✅ FUNCIÓN para evitar duplicados
+function agregarSiNoEsDuplicado(historial, nuevoMensaje) {
+    const ultimo = historial[historial.length - 1];
+    if (ultimo && ultimo.from === nuevoMensaje.from && ultimo.mensaje === nuevoMensaje.mensaje) {
+        return historial;
+    }
+    return [...historial, nuevoMensaje];
+}
 
 async function guardarConversacionEnWix({ userId, nombre, mensajes }) {
     try {
@@ -196,7 +226,7 @@ app.post('/soporte', async (req, res) => {
                     messages: [{
                         role: 'user',
                         content: [
-                            { type: 'text', text: "Extrae SOLO el valor pagado (valor de la transferencia en pesos colombianos)..." },
+                            { type: 'text', text: "Extrae SOLO el valor pagado..." },
                             { type: 'image_url', image_url: { url: `data:${message.image.mime_type};base64,${base64Image}` } }
                         ]
                     }],
@@ -206,12 +236,13 @@ app.post('/soporte', async (req, res) => {
             const openaiJson = await aiRes.json();
             const resultado = openaiJson.choices?.[0]?.message?.content || "Error analizando imagen";
 
-            const nuevoHistorial = [
-                ...mensajesHistorial,
-                { from: "usuario", mensaje: "(imagen de comprobante)", timestamp: new Date().toISOString() },
-                { from: "sistema", mensaje: `Hemos recibido tu comprobante. Valor detectado: $${resultado}`, timestamp: new Date().toISOString() }
-            ];
-            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+            let historialActualizado = agregarSiNoEsDuplicado(mensajesHistorial, {
+                from: "usuario", mensaje: "(imagen de comprobante)", timestamp: new Date().toISOString()
+            });
+            historialActualizado = agregarSiNoEsDuplicado(historialActualizado, {
+                from: "sistema", mensaje: `Hemos recibido tu comprobante. Valor detectado: $${resultado}`, timestamp: new Date().toISOString()
+            });
+            await guardarConversacionEnWix({ userId: from, nombre, mensajes: historialActualizado });
             await sendMessage(to, `Hemos recibido tu comprobante. Valor detectado: $${resultado}\n...transfiriendo con asesor`);
 
             return res.json({ success: true, mensaje: "Valor detectado.", valor: resultado });
@@ -219,12 +250,13 @@ app.post('/soporte', async (req, res) => {
 
         const userMessage = message.text?.body;
         if (userMessage && debeDetenerBot(userMessage)) {
-            const nuevoHistorial = [
-                ...mensajesHistorial,
-                { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-                { from: "sistema", mensaje: "Gracias, te paso con un asesor ahora.", timestamp: new Date().toISOString() }
-            ];
-            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+            let historialActualizado = agregarSiNoEsDuplicado(mensajesHistorial, {
+                from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString()
+            });
+            historialActualizado = agregarSiNoEsDuplicado(historialActualizado, {
+                from: "sistema", mensaje: "Gracias, te paso con un asesor ahora.", timestamp: new Date().toISOString()
+            });
+            await guardarConversacionEnWix({ userId: from, nombre, mensajes: historialActualizado });
             await sendMessage(to, "Gracias, te paso con un asesor ahora.\n...transfiriendo con asesor");
             await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
                 method: 'POST',
@@ -257,12 +289,13 @@ app.post('/soporte', async (req, res) => {
             const openaiJson = await aiRes.json();
             const respuestaBot = openaiJson.choices?.[0]?.message?.content || "Sin respuesta del asistente.";
 
-            const nuevoHistorial = [
-                ...mensajesHistorial,
-                { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-                { from: "sistema", mensaje: respuestaBot, timestamp: new Date().toISOString() }
-            ];
-            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+            let historialActualizado = agregarSiNoEsDuplicado(mensajesHistorial, {
+                from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString()
+            });
+            historialActualizado = agregarSiNoEsDuplicado(historialActualizado, {
+                from: "sistema", mensaje: respuestaBot, timestamp: new Date().toISOString()
+            });
+            await guardarConversacionEnWix({ userId: from, nombre, mensajes: historialActualizado });
             await sendMessage(to, respuestaBot);
 
             return res.json({ success: true, mensaje: "Respuesta enviada.", respuesta: respuestaBot });
