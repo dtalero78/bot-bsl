@@ -132,24 +132,6 @@ async function sendMessage(to, body) {
     console.log("Respuesta envío WhatsApp:", JSON.stringify(json, null, 2));
 }
 
-function debeDetenerBot(texto) {
-    const mensaje = texto.toLowerCase();
-
-    const condiciones = [
-        mensaje.includes("foundever"),
-        mensaje.includes("egreso"),
-        mensaje.includes("ya terminé mis pruebas"),
-        mensaje.includes("quiero hablar con un asesor"),
-        mensaje.includes("puedo hablar con alguien"),
-        mensaje.includes("me pueden ayudar con algo"),
-        mensaje.includes("ya pagué"),
-    ];
-
-    return condiciones.some(cond => cond === true);
-}
-
-
-
 app.post('/soporte', async (req, res) => {
     try {
         const body = req.body;
@@ -163,13 +145,8 @@ app.post('/soporte', async (req, res) => {
         if (message.from_me === true || message.from === BOT_NUMBER) {
             const bodyText = message?.text?.body?.trim();
 
-            // 🔴 Nueva condición para detener el bot si el usuario terminó las pruebas
-            const debeParar = bodyText === "...transfiriendo con asesor"
-                || bodyText === "...transfiriendo con asesor."
-                || bodyText.includes("ya terminé mis pruebas")  // ✅ Nueva condición aquí
-
-            if (debeParar) {
-                console.log(`🛑 Bot desactivado para ${message.chat_id} por frase especial`);
+            if (bodyText === "...transfiriendo con asesor" || bodyText === "...transfiriendo con asesor.") {
+                console.log(`🛑 Bot desactivado manualmente para ${message.chat_id}`);
 
                 await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
                     method: 'POST',
@@ -180,8 +157,6 @@ app.post('/soporte', async (req, res) => {
                     })
                 });
             }
-
-
 
             if (bodyText === "...te dejo con el bot 🤖") {
                 console.log(`✅ Bot reactivado manualmente para ${message.chat_id}`);
@@ -278,30 +253,6 @@ app.post('/soporte', async (req, res) => {
 
             return res.json({ success: true, mensaje: "Valor detectado en el comprobante", valorDetectado: resultado });
         }
-
-if (debeDetenerBot(userMessage)) {
-    const nuevoHistorial = [
-        ...mensajesHistorial,
-        { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-        { from: "sistema", mensaje: "Gracias, te paso con un asesor ahora.", timestamp: new Date().toISOString() }
-    ];
-
-    await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
-    await sendMessage(to, "Gracias, te paso con un asesor ahora.");
-    
-    await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            userId: from,
-            observaciones: "stop"
-        })
-    });
-
-    return res.json({ success: true, mensaje: "Detenido por condición especial." });
-}
-
-
 
         // 📝 Procesamiento de textos
         if (tipo === "text" && message.text?.body) {
