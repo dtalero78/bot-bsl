@@ -145,7 +145,13 @@ app.post('/soporte', async (req, res) => {
         if (message.from_me === true || message.from === BOT_NUMBER) {
             const bodyText = message?.text?.body?.trim();
 
-            if (bodyText === "...transfiriendo con asesor" || bodyText === "...transfiriendo con asesor.") {
+            const frasesDeDetencion = [
+                "...transfiriendo con asesor",
+                "...transfiriendo con asesor.",
+                "ya terminé mis las pruebas",
+                "ya termine mis las pruebas"
+            ];
+            if (bodyText && frasesDeDetencion.includes(bodyText.toLowerCase())) {
                 console.log(`🛑 Bot desactivado manualmente para ${message.chat_id}`);
 
                 await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
