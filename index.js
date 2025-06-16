@@ -255,7 +255,7 @@ app.post('/soporte', async (req, res) => {
             return res.json({ success: true, mensaje: "Valor detectado en el comprobante", valorDetectado: resultado });
         }
 
-        // 📝 Procesamiento de textox
+        // 📝 Procesamiento de textos
         if (tipo === "text" && message.text?.body) {
             const userMessage = message.text.body;
 
@@ -277,36 +277,43 @@ app.post('/soporte', async (req, res) => {
             const documentoMatch = userMessage.match(/\b\d{6,10}\b/);
             const numeroId = documentoMatch?.[0];
 
-            if (userMessage.toLowerCase().includes("cita") && documentoMatch) {
-                const numeroId = documentoMatch[0];
+ if (userMessage.toLowerCase().includes("cita") && documentoMatch) {
+    const numeroId = documentoMatch[0];
+    console.log(`📄 Buscando cita para documento: ${numeroId}`);
 
-                console.log(`📄 Buscando cita para documento: ${numeroId}`);
+    const response = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${numeroId}`);
+    const text = await response.text();
 
-                const response = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${numeroId}`);
-                const data = await response.json();
+    let data;
+    try {
+        data = JSON.parse(text);
+    } catch (e) {
+        console.error("❌ Respuesta de Wix buscando cita NO es JSON:", text);
+        return res.json({ success: false, mensaje: "Error consultando la cita. Intenta más tarde." });
+    }
 
-                if (data && data.found) {
-                    const mensaje = `✅ Cita encontrada:
+    if (data && data.found) {
+        const mensaje = `✅ Cita encontrada:
 - Documento: ${data.numeroId}
 - Nombre: ${data.nombreCompleto}
 - Fecha: ${data.fechaAtencion}`;
 
-                    await sendMessage(to, mensaje);
+        await sendMessage(to, mensaje);
 
-                    const nuevoHistorial = [
-                        ...mensajesHistorial,
-                        { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-                        { from: "sistema", mensaje, timestamp: new Date().toISOString() }
-                    ];
-                    await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+        const nuevoHistorial = [
+            ...mensajesHistorial,
+            { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+            { from: "sistema", mensaje, timestamp: new Date().toISOString() }
+        ];
+        await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
 
-                    return res.json({ success: true, mensaje: "Consulta de cita procesada." });
-                } else {
-                    const mensaje = "❌ No encontramos una cita registrada con ese número de documento.";
-                    await sendMessage(to, mensaje);
-                    return res.json({ success: true, mensaje });
-                }
-            }
+        return res.json({ success: true, mensaje: "Consulta de cita procesada." });
+    } else {
+        const mensaje = "❌ No encontramos una cita registrada con ese número de documento.";
+        await sendMessage(to, mensaje);
+        return res.json({ success: true, mensaje });
+    }
+}
 
 
 
