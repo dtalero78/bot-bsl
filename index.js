@@ -392,25 +392,6 @@ app.post('/soporte', async (req, res) => {
     }
 });
 
-const { generarYEnviarPdf } = require('./generarYEnviarPdf');
-
-app.post('/test-pdf', async (req, res) => {
-    const { documento, telefono } = req.body;
-
-    if (!documento || !telefono) {
-        return res.status(400).json({ success: false, error: "Faltan datos: documento y telefono." });
-    }
-
-    try {
-        const chatId = `${telefono}@s.whatsapp.net`;
-        const resultado = await generarYEnviarPdf(documento, chatId);
-        res.json(resultado);
-    } catch (err) {
-        console.error("Error en /test-pdf:", err.message);
-        res.status(500).json({ success: false, error: err.message });
-    }
-});
-
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log("Servidor escuchando en puerto", PORT);
