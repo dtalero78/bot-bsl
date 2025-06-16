@@ -255,7 +255,7 @@ app.post('/soporte', async (req, res) => {
             return res.json({ success: true, mensaje: "Valor detectado en el comprobante", valorDetectado: resultado });
         }
 
-        // 📝 Procesamiento de texto
+        // 📝 Procesamiento de textox
         if (tipo === "text" && message.text?.body) {
             const userMessage = message.text.body;
 
@@ -274,8 +274,8 @@ app.post('/soporte', async (req, res) => {
                 return res.json({ success: true, mensaje: "Solicitud de documento enviada al usuario." });
             }
 
-const documentoMatch = userMessage.match(/\b\d{6,10}\b/);
-const numeroId = documentoMatch?.[0];
+            const documentoMatch = userMessage.match(/\b\d{6,10}\b/);
+            const numeroId = documentoMatch?.[0];
 
             if (userMessage.toLowerCase().includes("cita") && documentoMatch) {
                 const numeroId = documentoMatch[0];
