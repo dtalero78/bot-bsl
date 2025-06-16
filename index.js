@@ -104,8 +104,9 @@ app.post('/soporte', async (req, res) => {
         const chatId = message.chat_id;
         const to = chatId || `${from}@s.whatsapp.net`;
 
+        
         // Trae historial actual desde Wix
-        let mensajesHistorial = await obtenerConversacionDeWix(from);
+        let mensajesHistorial = await obtenerConversacionDeWix(from) || [];
 
         // Si es imagen (comprobante)
         if (tipo === "image" && message.image && typeof message.image.id === "string") {
