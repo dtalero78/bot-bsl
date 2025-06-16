@@ -104,12 +104,17 @@ INDICACIONES ADICIONALES:
 
 // ✅ FUNCIÓN para evitar duplicados
 function agregarSiNoEsDuplicado(historial, nuevoMensaje) {
-    const ultimo = historial[historial.length - 1];
-    if (ultimo && ultimo.from === nuevoMensaje.from && ultimo.mensaje === nuevoMensaje.mensaje) {
-        return historial;
-    }
-    return [...historial, nuevoMensaje];
+  const ultimo = historial[historial.length - 1];
+  if (
+    ultimo &&
+    ultimo.from === nuevoMensaje.from &&
+    ultimo.mensaje.trim() === nuevoMensaje.mensaje.trim()
+  ) {
+    return historial; // no lo agrega
+  }
+  return [...historial, nuevoMensaje];
 }
+
 
 async function guardarConversacionEnWix({ userId, nombre, mensajes }) {
     try {
@@ -182,14 +187,20 @@ app.post('/soporte', async (req, res) => {
 
         if (message.from_me || from === BOT_NUMBER) {
             const bodyText = message?.text?.body?.trim();
+const lowerText = bodyText?.toLowerCase();
 
-            if (["...transfiriendo con asesor", "...transfiriendo con asesor."].includes(bodyText) || bodyText.includes("ya terminé mis pruebas")) {
-                await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: from, observaciones: "stop" })
-                });
-            }
+if (
+  lowerText === "...transfiriendo con asesor" ||
+  lowerText === "...transfiriendo con asesor." ||
+  lowerText.includes("ya terminé mis pruebas")
+) {
+  await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId: from, observaciones: "stop" })
+  });
+}
+
 
             if (bodyText === "...te dejo con el bot 🤖") {
                 await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
