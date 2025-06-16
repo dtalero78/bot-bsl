@@ -315,82 +315,82 @@ app.post('/soporte', async (req, res) => {
 
             // 💡 Si OpenAI responde con ConsultaCita(...)
             if (respuestaBot.includes("ConsultaCita(")) {
-    const match = respuestaBot.match(/ConsultaCita\(([^)]+)\)/);
-    const numeroIdDetectado = match?.[1]?.trim();
+                const match = respuestaBot.match(/ConsultaCita\(([^)]+)\)/);
+                const numeroIdDetectado = match?.[1]?.trim();
 
-    if (numeroIdDetectado && numeroIdDetectado.toLowerCase() !== "pendiente") {
-        const numeroIdLimpio = String(numeroIdDetectado).replace(/\D/g, '').trim();
+                if (numeroIdDetectado && numeroIdDetectado.toLowerCase() !== "pendiente") {
+                    const numeroIdLimpio = String(numeroIdDetectado).replace(/\D/g, '').trim();
 
-        try {
-            const citaRes = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${numeroIdLimpio}`);
-            const rawText = await citaRes.text();
+                    try {
+                        const citaRes = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${numeroIdLimpio}`);
+                        const rawText = await citaRes.text();
 
-            console.log("[📨] Respuesta cruda de Wix:", rawText);
+                        console.log("[📨] Respuesta cruda de Wix:", rawText);
 
-            let citaJson = {};
-            try {
-                citaJson = JSON.parse(rawText);
-            } catch (jsonError) {
-                console.error("[❌] Respuesta de Wix NO es JSON:", rawText);
-                await sendMessage(to, "Hubo un error consultando tu cita. Por favor intenta más tarde.");
-                return res.json({ success: false, error: "Respuesta no válida desde Wix" });
-            }
+                        let citaJson = {};
+                        try {
+                            citaJson = JSON.parse(rawText);
+                        } catch (jsonError) {
+                            console.error("[❌] Respuesta de Wix NO es JSON:", rawText);
+                            await sendMessage(to, "Hubo un error consultando tu cita. Por favor intenta más tarde.");
+                            return res.json({ success: false, error: "Respuesta no válida desde Wix" });
+                        }
 
-            console.log("[✅] JSON parseado:", citaJson);
+                        console.log("[✅] JSON parseado:", citaJson);
 
-            if (citaJson.found) {
-                respuestaBot = `✅ Consulta encontrada para ${citaJson.nombreCompleto}:\n📅 Fecha: ${citaJson.fechaAtencion}`;
-            } else {
-                respuestaBot = `❌ No encontramos una cita con ese número de documento.`;
-            }
+                        if (citaJson.found) {
+                            respuestaBot = `✅ Consulta encontrada para ${citaJson.nombreCompleto}:\n📅 Fecha: ${citaJson.fechaAtencion}`;
+                        } else {
+                            respuestaBot = `❌ No encontramos una cita con ese número de documento.`;
+                        }
 
-        } catch (fetchError) {
-            console.error("[❌] Error general al consultar Wix:", fetchError.message);
-            await sendMessage(to, "No pudimos consultar tu cita en este momento. Intenta más tarde.");
-            return res.json({ success: false, error: fetchError.message });
-        }
+                    } catch (fetchError) {
+                        console.error("[❌] Error general al consultar Wix:", fetchError.message);
+                        await sendMessage(to, "No pudimos con  sultar tu cita en este momento. Intenta más tarde.");
+                        return res.json({ success: false, error: fetchError.message });
+                    }
 
-    } else {
-        respuestaBot = "Claro, para ayudarte necesito tu número de documento. Por favor escríbelo.";
-    }
-}
-
-}
-
-
-
-            // 🧠 Si el usuario directamente mandó un número, procesarlo como númeroId
-            if (esNumeroId) {
-                const citaRes = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${userMessage}`);
-                const citaJson = await citaRes.json();
-
-                if (citaJson.body?.found) {
-                    respuestaBot = `✅ Consulta encontrada para ${citaJson.body.nombreCompleto}:\n📅 Fecha: ${citaJson.body.fechaAtencion}`;
                 } else {
-                    respuestaBot = `❌ No encontramos una cita con ese número de documento.`;
+                    respuestaBot = "Claro, para ayudarte necesito tu número de documento. Por favor escríbelo.";
                 }
             }
 
-            // Guardar nuevo mensaje en historial y responder
-            const nuevoHistorial = [
-                ...mensajesHistorial,
-                { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-                { from: "sistema", mensaje: respuestaBot, timestamp: new Date().toISOString() }
-            ];
-
-            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
-            await sendMessage(to, respuestaBot);
-
-            return res.json({ success: true, mensaje: "Respuesta enviada al usuario.", respuesta: respuestaBot });
         }
+
+
+
+        // 🧠 Si el usuario directamente mandó un número, procesarlo como númeroId
+        if (esNumeroId) {
+            const citaRes = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${userMessage}`);
+            const citaJson = await citaRes.json();
+
+            if (citaJson.body?.found) {
+                respuestaBot = `✅ Consulta encontrada para ${citaJson.body.nombreCompleto}:\n📅 Fecha: ${citaJson.body.fechaAtencion}`;
+            } else {
+                respuestaBot = `❌ No encontramos una cita con ese número de documento.`;
+            }
+        }
+
+        // Guardar nuevo mensaje en historial y responder
+        const nuevoHistorial = [
+            ...mensajesHistorial,
+            { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+            { from: "sistema", mensaje: respuestaBot, timestamp: new Date().toISOString() }
+        ];
+
+        await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+        await sendMessage(to, respuestaBot);
+
+        return res.json({ success: true, mensaje: "Respuesta enviada al usuario.", respuesta: respuestaBot });
+    }
 
 
         return res.json({ success: true, mensaje: "Mensaje ignorado (no es texto ni imagen procesable)." });
 
-    } catch (error) {
-        console.error("Error general en /soporte:", error);
-        return res.status(500).json({ success: false, error: error.message });
-    }
+} catch (error) {
+    console.error("Error general en /soporte:", error);
+    return res.status(500).json({ success: false, error: error.message });
+}
 });
 
 const PORT = process.env.PORT || 3000;
