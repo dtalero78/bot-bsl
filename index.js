@@ -68,7 +68,7 @@ INDICACIONES ADICIONALES:
 
 🔴 DETENCIÓN DEL BOT:
 
-- Si el usuario dice que quiere hablar con un asesor, o pide ayuda de una persona, **escribe internamente la frase especial exacta: "...transfiriendo con asesor"**. Eso hará que el sistema detenga el bot.
+- Si el usuario dice que quiere hablar con un asesor, o pide ayuda de una persona, **escribe internamente la frase especial exacta: "...transfiriendo con asesor"** SIN NINGUN PUNTO AL FINAL. Eso hará que el sistema detenga el bot.
 - Después de analizar una imagen enviada por el usuario, **responde normalmente con el análisis** y luego **escribe también la frase: "...transfiriendo con asesor"** para detener el bot tras la respuesta.
 `;
 
