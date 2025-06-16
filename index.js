@@ -84,6 +84,37 @@ app.post('/soporte', async (req, res) => {
             resultado = `Error OpenAI: ${openaiJson.error.message}`;
         }
 
+        // ENVÍA MENSAJE POR WHATSAPP AL USUARIO
+        try {
+            // Usa el campo 'from' para saber a qué usuario responder
+            const numeroDestino = soporteEncontrado.from || soporteEncontrado.chat_id; // .from es solo el número, .chat_id incluye @s.whatsapp.net
+            // Si solo tienes el número, agrégale el sufijo:
+            const to = numeroDestino.includes('@s.whatsapp.net')
+                ? numeroDestino
+                : `${numeroDestino}@s.whatsapp.net`;
+
+            const sendTextUrl = "https://gate.whapi.cloud/messages/text";
+            const mensajeWh = `Hemos recibido tu comprobante. Valor detectado: $${resultado}`;
+
+            const respuestaWhapi = await fetch(sendTextUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${WHAPI_KEY}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    to: to,
+                    body: mensajeWh
+                })
+            });
+
+            const respWhapiJson = await respuestaWhapi.json();
+            console.log("Respuesta envío WhatsApp:", JSON.stringify(respWhapiJson, null, 2));
+        } catch (errorEnvio) {
+            console.error("Error enviando mensaje por WhatsApp:", errorEnvio);
+        }
+
+        // Devuelve la respuesta HTTP normal
         return res.json({
             success: true,
             mensaje: "Valor detectado en el comprobante (imagen original)",
