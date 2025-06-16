@@ -321,20 +321,40 @@ app.post('/soporte', async (req, res) => {
     if (numeroIdDetectado && numeroIdDetectado.toLowerCase() !== "pendiente") {
         const numeroIdLimpio = String(numeroIdDetectado).replace(/\D/g, '').trim();
 
-        const citaRes = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${numeroIdLimpio}`);
-        const citaJson = await citaRes.json(); // ✅ SIN usar text() ni JSON.parse
+        try {
+            const citaRes = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${numeroIdLimpio}`);
+            const rawText = await citaRes.text();
 
-        console.log("[✅] JSON parseado:", citaJson);
+            console.log("[📨] Respuesta cruda de Wix:", rawText);
 
-        if (citaJson.found) {
-            respuestaBot = `✅ Consulta encontrada para ${citaJson.nombreCompleto}:\n📅 Fecha: ${citaJson.fechaAtencion}`;
-        } else {
-            respuestaBot = `❌ No encontramos una cita con ese número de documento.`;
+            let citaJson = {};
+            try {
+                citaJson = JSON.parse(rawText);
+            } catch (jsonError) {
+                console.error("[❌] Respuesta de Wix NO es JSON:", rawText);
+                await sendMessage(to, "Hubo un error consultando tu cita. Por favor intenta más tarde.");
+                return res.json({ success: false, error: "Respuesta no válida desde Wix" });
+            }
+
+            console.log("[✅] JSON parseado:", citaJson);
+
+            if (citaJson.found) {
+                respuestaBot = `✅ Consulta encontrada para ${citaJson.nombreCompleto}:\n📅 Fecha: ${citaJson.fechaAtencion}`;
+            } else {
+                respuestaBot = `❌ No encontramos una cita con ese número de documento.`;
+            }
+
+        } catch (fetchError) {
+            console.error("[❌] Error general al consultar Wix:", fetchError.message);
+            await sendMessage(to, "No pudimos consultar tu cita en este momento. Intenta más tarde.");
+            return res.json({ success: false, error: fetchError.message });
         }
 
     } else {
         respuestaBot = "Claro, para ayudarte necesito tu número de documento. Por favor escríbelo.";
     }
+}
+
 }
 
 
