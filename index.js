@@ -313,38 +313,62 @@ app.post('/soporte', async (req, res) => {
                 respuestaBot = `Error OpenAI: ${openaiJson.error.message}`;
             }
 
-            if (esNumeroId) {
-                const esperaCertificado = mensajesHistorial.some(m =>
-                    m.mensaje.toLowerCase().includes("valor detectado: $46000") ||
-                    m.mensaje === "esperandoDocumento"
-                );
+            // 💡 Si OpenAI responde con ConsultaCita(...)
+            if (respuestaBot.includes("ConsultaCita(")) {
+                const match = respuestaBot.match(/ConsultaCita\(([^)]+)\)/);
+                const numeroIdDetectado = match?.[1]?.trim();
 
-                if (esperaCertificado) {
+                if (numeroIdDetectado && numeroIdDetectado.toLowerCase() !== "pendiente") {
+                    const numeroIdLimpio = String(numeroIdDetectado).replace(/\D/g, '').trim();
+
                     try {
-                        const resultado = await generarYEnviarPdf(userMessage, to);
-                        if (resultado.success) {
-                            const nuevoHistorial = [
-                                ...mensajesHistorial,
-                                { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-                                { from: "sistema", mensaje: `✅ Certificado enviado: ${resultado.pdfUrl}`, timestamp: new Date().toISOString() }
-                            ];
-                            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
-                            return res.json({ success: true, mensaje: "Certificado enviado automáticamente." });
-                        } else {
-                            await sendMessage(to, "❌ No pudimos generar tu certificado. Intenta más tarde.");
-                            return res.json({ success: false, mensaje: resultado.error });
+                        const citaRes = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${numeroIdLimpio}`);
+                        const rawText = await citaRes.text();
+
+                        console.log("[📨] Respuesta cruda de Wix:", rawText);
+
+                        let citaJson = {};
+                        try {
+                            citaJson = JSON.parse(rawText);
+                        } catch (jsonError) {
+                            console.error("[❌] Respuesta de Wix NO es JSON:", rawText);
+                            await sendMessage(to, "Hubo un error consultando tu cita. Por favor intenta más tarde.");
+                            return res.json({ success: false, error: "Respuesta no válida desde Wix" });
                         }
-                    } catch (err) {
-                        console.error("❌ Error al generar y enviar certificado:", err.message);
-                        await sendMessage(to, "❌ Error inesperado al generar tu certificado.");
-                        return res.status(500).json({ success: false, error: err.message });
+
+                        console.log("[✅] JSON parseado:", citaJson);
+
+                        if (citaJson.found) {
+                            respuestaBot = `✅ Consulta encontrada para ${citaJson.nombreCompleto}:\n📅 Fecha: ${citaJson.fechaAtencion}`;
+                        } else {
+                            respuestaBot = `❌ No encontramos una cita con ese número de documento.`;
+                        }
+
+                    } catch (fetchError) {
+                        console.error("[❌] Error general al consultar Wix:", fetchError.message);
+                        await sendMessage(to, "No pudimos consultar tu cita en este momento. Intenta más tarde.");
+                        return res.json({ success: false, error: fetchError.message });
                     }
+
                 } else {
-                    await sendMessage(to, "🧠 Recibido. Pero aún no hemos validado tu pago. Por favor envía primero tu comprobante.");
-                    return res.json({ success: true, mensaje: "Documento recibido, pero no hay comprobante previo." });
+                    respuestaBot = "Claro, para ayudarte necesito tu número de documento. Por favor escríbelo.";
                 }
             }
 
+
+
+
+            // 🧠 Si el usuario directamente mandó un número, procesarlo como númeroId
+            if (esNumeroId) {
+                const citaRes = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${userMessage}`);
+                const citaJson = await citaRes.json();
+
+                if (citaJson.body?.found) {
+                    respuestaBot = `✅ Consulta encontrada para ${citaJson.body.nombreCompleto}:\n📅 Fecha: ${citaJson.body.fechaAtencion}`;
+                } else {
+                    respuestaBot = `❌ No encontramos una cita con ese número de documento.`;
+                }
+            }
 
             // Guardar nuevo mensaje en historial y responder
             const nuevoHistorial = [
