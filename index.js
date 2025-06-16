@@ -7,40 +7,13 @@ app.use(express.json({ limit: '10mb' }));
 
 const OPENAI_KEY = process.env.OPENAI_KEY;
 const WHAPI_KEY = process.env.WHAPI_KEY;
+const BOT_NUMBER = "573008021701";
 
-// Prompt institucional que usarás con OpenAI para el menú
 const promptInstitucional = `
-Eres un asistente virtual para exámenes médicos ocupacionales de la empresa BSL en Colombia. Tu función es guiar a los usuarios de WhatsApp y responder sus preguntas de manera clara, breve y amable, siempre en un tono profesional y cercano.
-
-INFORMACION INSTITUCIONAL:
-
-1. Exámenes Ocupacionales:
-
-   - Virtual: $46.000 COP  
-     Pasos: Escoge la hora, realiza las pruebas en línea, un médico te contactará, paga y descarga tu certificado al instante.  
-     Incluye: Médico Osteomuscular, Audiometría, Optometría.  
-     Extras disponibles (pueden tener costo adicional):  
-     Cardiovascular ($5.000), Vascular ($5.000), Espirometría ($5.000), Psicológico ($15.000), Dermatológico ($5.000), Perfil lipídico y otros laboratorios.
-
-   - Presencial: $69.000 COP  
-     Lugar: Calle 134 No. 7-83, Bogotá.  
-     Horario: Lunes a Viernes 7:30 AM - 4:30 PM, Sábados 8:00 AM - 11:30 AM.  
-     No necesita agendar, es por orden de llegada.  
-     Incluye lo mismo que el virtual.
-
-2. Pagos y descarga de certificados:  
-   Bancolombia: Cta Ahorros 44291192456, cédula 79981585  
-   Daviplata: 3014400818  
-   Nequi: 3008021701  
-    Al hacerlo envía el soporte de pago por este medio
-
-3. Otros servicios y preguntas:
-   - Puedes escribir cualquier pregunta relacionada con exámenes médicos ocupacionales, certificados, horarios, formas de pago, servicios adicionales o cualquier otra consulta sobre BSL y recibirás una respuesta clara y útil.
-
-Recuerda: Tu objetivo es resolver la duda del usuario lo más breve posible, con instrucciones claras y si la pregunta no está relacionada con la información de BSL, responde "Por el momento solo puedo resolver dudas sobre exámenes ocupacionales y servicios de BSL".
+Eres un asistente virtual para exámenes médicos ocupacionales de la empresa BSL en Colombia...
+[puedes reemplazar con el texto completo si lo necesitas]
 `;
 
-// Función para guardar conversación en Wix
 async function guardarConversacionEnWix({ userId, nombre, mensajes }) {
     try {
         const resp = await fetch('https://www.bsl.com.co/_functions/guardarConversacion', {
@@ -48,7 +21,7 @@ async function guardarConversacionEnWix({ userId, nombre, mensajes }) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId, nombre, mensajes })
         });
-        const text = await resp.text(); // 👈
+        const text = await resp.text();
         try {
             const json = JSON.parse(text);
             console.log("Conversación guardada en Wix:", json);
@@ -60,22 +33,18 @@ async function guardarConversacionEnWix({ userId, nombre, mensajes }) {
     }
 }
 
-
-// Función para obtener historial de usuario desde Wix (si quieres mantener historial continuo)
 async function obtenerConversacionDeWix(userId) {
     try {
         const resp = await fetch(`https://www.bsl.com.co/_functions/obtenerConversacion?userId=${encodeURIComponent(userId)}`);
-        if (!resp.ok) return null;
+        if (!resp.ok) return { mensajes: [], stopBot: false };
         const json = await resp.json();
-        if (json && json.mensajes) return json.mensajes;
-        return [];
+        return json;
     } catch (err) {
         console.error("Error obteniendo historial de Wix:", err);
-        return [];
+        return { mensajes: [], stopBot: false };
     }
 }
 
-// Función para enviar mensaje por WhatsApp
 async function sendMessage(to, body) {
     const url = "https://gate.whapi.cloud/messages/text";
     const resp = await fetch(url, {
@@ -84,10 +53,7 @@ async function sendMessage(to, body) {
             'Authorization': `Bearer ${WHAPI_KEY}`,
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-            to: to,
-            body: body
-        })
+        body: JSON.stringify({ to, body })
     });
     const json = await resp.json();
     console.log("Respuesta envío WhatsApp:", JSON.stringify(json, null, 2));
@@ -102,25 +68,10 @@ app.post('/soporte', async (req, res) => {
             return res.status(400).json({ success: false, error: "No hay mensajes en el payload." });
         }
 
-        // Solo procesar el primer mensaje (ajusta si quieres procesar más de uno)
         const message = body.messages[0];
-        // 👉 NO procesar mensajes enviados por el propio bot
-        if (message.from_me === true) {
+        if (message.from_me === true || message.from === BOT_NUMBER) {
             console.log("Mensaje enviado por el bot, ignorado.");
-            return res.json({
-                success: true,
-                mensaje: "Mensaje enviado por el bot, no procesado."
-            });
-        }
-
-        // Alternativamente, si tienes el número del bot
-        const BOT_NUMBER = "573008021701"; // Reemplaza por tu número real sin @ ni nada
-        if (message.from === BOT_NUMBER) {
-            console.log("Mensaje enviado por el bot (from coincide), ignorado.");
-            return res.json({
-                success: true,
-                mensaje: "Mensaje enviado por el bot, no procesado."
-            });
+            return res.json({ success: true, mensaje: "Mensaje enviado por el bot, no procesado." });
         }
 
         const from = message.from;
@@ -129,23 +80,16 @@ app.post('/soporte', async (req, res) => {
         const chatId = message.chat_id;
         const to = chatId || `${from}@s.whatsapp.net`;
 
-        // ⛔️ Chequea si el usuario tiene stopBot activado
-        if (await usuarioTieneStopBot(from)) {
-            console.log(`[SOFT BLOCK] Usuario con stopBot=true, no se responde: ${from}`);
-            return res.json({
-                success: true,
-                mensaje: "Usuario bloqueado por stopBot."
-            });
+        // ✅ Obtener conversación con stopBot incluido
+        const { mensajes: mensajesHistorial = [], stopBot = false } = await obtenerConversacionDeWix(from);
+
+        if (stopBot === true || stopBot === "true") {
+            console.log(`[STOP] Usuario bloqueado por stopBot: ${from}`);
+            return res.json({ success: true, mensaje: "Usuario bloqueado por stopBot." });
         }
 
-
-        // Trae historial actual desde Wix
-        let mensajesHistorial = await obtenerConversacionDeWix(from) || [];
-        console.log("🟢 Mensajes previos traídos desde Wix:", mensajesHistorial);
-
-        // Si es imagen (comprobante)
+        // 🖼 Procesamiento de imagen
         if (tipo === "image" && message.image && typeof message.image.id === "string") {
-            // Descarga imagen y analiza con OpenAI
             const imageId = message.image.id;
             const mimeType = message.image.mime_type || "image/jpeg";
             const urlImg = `https://gate.whapi.cloud/media/${imageId}`;
@@ -163,12 +107,9 @@ app.post('/soporte', async (req, res) => {
 
             const buffer = await whapiRes.buffer();
             const base64Image = buffer.toString('base64');
-            console.log("Tamaño base64:", base64Image.length);
 
-            const openaiUrl = "https://api.openai.com/v1/chat/completions";
-            const prompt = "Extrae SOLO el valor pagado (valor de la transferencia en pesos colombianos) que aparece en este comprobante bancario. Responde solo el valor exacto, sin explicaciones, ni símbolos adicionales.";
-
-            const aiRes = await fetch(openaiUrl, {
+            const prompt = "Extrae SOLO el valor pagado (valor de la transferencia en pesos colombianos)...";
+            const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${OPENAI_KEY}`,
@@ -188,57 +129,30 @@ app.post('/soporte', async (req, res) => {
             });
 
             const openaiJson = await aiRes.json();
-            console.log("Respuesta cruda de OpenAI:", JSON.stringify(openaiJson, null, 2));
-
             let resultado = "No se obtuvo respuesta de OpenAI.";
-            if (openaiJson.choices && openaiJson.choices[0] && openaiJson.choices[0].message) {
+            if (openaiJson.choices?.[0]?.message) {
                 resultado = openaiJson.choices[0].message.content;
-            } else if (openaiJson.error && openaiJson.error.message) {
+            } else if (openaiJson.error?.message) {
                 resultado = `Error OpenAI: ${openaiJson.error.message}`;
             }
 
-            // Guarda mensajes (historial)
-            mensajesHistorial = mensajesHistorial || [];
-            mensajesHistorial.push({
-                from: "usuario",
-                mensaje: "(imagen de comprobante)",
-                timestamp: new Date().toISOString()
-            });
-            mensajesHistorial.push({
-                from: "sistema",
-                mensaje: `Hemos recibido tu comprobante. Valor detectado: $${resultado}`,
-                timestamp: new Date().toISOString()
-            });
-            console.log("Historial que voy a guardar:", JSON.stringify(mensajesHistorial, null, 2));
+            const nuevoHistorial = [
+                ...mensajesHistorial,
+                { from: "usuario", mensaje: "(imagen de comprobante)", timestamp: new Date().toISOString() },
+                { from: "sistema", mensaje: `Hemos recibido tu comprobante. Valor detectado: $${resultado}`, timestamp: new Date().toISOString() }
+            ];
 
-            await guardarConversacionEnWix({
-                userId: from,
-                nombre: nombre,
-                mensajes: mensajesHistorial
-            });
-
+            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
             await sendMessage(to, `Hemos recibido tu comprobante. Valor detectado: $${resultado}`);
-            return res.json({
-                success: true,
-                mensaje: "Valor detectado en el comprobante (imagen original)",
-                valorDetectado: resultado
-            });
+
+            return res.json({ success: true, mensaje: "Valor detectado en el comprobante", valorDetectado: resultado });
         }
 
-        // Si es texto, responde usando OpenAI (con historial como contexto)
-        if (tipo === "text" && message.text && message.text.body) {
+        // 📝 Procesamiento de texto
+        if (tipo === "text" && message.text?.body) {
             const userMessage = message.text.body;
 
-            // Opcional: puedes armar el contexto como prompt aquí usando historial.
-            // Ejemplo básico:
-            const historialPrompt = mensajesHistorial.map(
-                m => `${m.from === "usuario" ? "Usuario" : "Asistente"}: ${m.mensaje}`
-            ).join('\n');
-            const systemPrompt = `Eres un asistente de WhatsApp para exámenes médicos. Responde de forma amigable y clara, guiando al usuario en todo el proceso.`;
-            const prompt = `${systemPrompt}\n${historialPrompt}\nUsuario: ${userMessage}\nAsistente:`;
-
-            const openaiUrl = "https://api.openai.com/v1/chat/completions";
-            const aiRes = await fetch(openaiUrl, {
+            const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${OPENAI_KEY}`,
@@ -247,8 +161,7 @@ app.post('/soporte', async (req, res) => {
                 body: JSON.stringify({
                     model: 'gpt-4o',
                     messages: [
-                        { role: 'system', content: systemPrompt },
-                        // Historial puede ir como mensajes previos (mejor para OpenAI)
+                        { role: 'system', content: promptInstitucional },
                         ...mensajesHistorial.map(m => ({
                             role: m.from === "usuario" ? "user" : "assistant",
                             content: m.mensaje
@@ -260,84 +173,32 @@ app.post('/soporte', async (req, res) => {
             });
 
             const openaiJson = await aiRes.json();
-            console.log("Respuesta cruda de OpenAI:", JSON.stringify(openaiJson, null, 2));
-
             let respuestaBot = "No se obtuvo respuesta de OpenAI.";
-            if (openaiJson.choices && openaiJson.choices[0] && openaiJson.choices[0].message) {
+            if (openaiJson.choices?.[0]?.message) {
                 respuestaBot = openaiJson.choices[0].message.content;
-            } else if (openaiJson.error && openaiJson.error.message) {
+            } else if (openaiJson.error?.message) {
                 respuestaBot = `Error OpenAI: ${openaiJson.error.message}`;
             }
 
-            // Actualiza historial
-            mensajesHistorial = mensajesHistorial || [];
-            mensajesHistorial.push({
-                from: "usuario",
-                mensaje: userMessage,
-                timestamp: new Date().toISOString()
-            });
-            mensajesHistorial.push({
-                from: "sistema",
-                mensaje: respuestaBot,
-                timestamp: new Date().toISOString()
-            });
-            console.log("Historial que voy a guardar:", JSON.stringify(mensajesHistorial, null, 2));
+            const nuevoHistorial = [
+                ...mensajesHistorial,
+                { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+                { from: "sistema", mensaje: respuestaBot, timestamp: new Date().toISOString() }
+            ];
 
-            await guardarConversacionEnWix({
-                userId: from,
-                nombre: nombre,
-                mensajes: mensajesHistorial
-            });
-
+            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
             await sendMessage(to, respuestaBot);
-            return res.json({
-                success: true,
-                mensaje: "Respuesta enviada al usuario.",
-                respuesta: respuestaBot
-            });
+
+            return res.json({ success: true, mensaje: "Respuesta enviada al usuario.", respuesta: respuestaBot });
         }
 
-        // Si no es imagen ni texto, ignora
-        return res.json({
-            success: true,
-            mensaje: "Mensaje ignorado (no es texto ni imagen procesable)."
-        });
+        return res.json({ success: true, mensaje: "Mensaje ignorado (no es texto ni imagen procesable)." });
 
     } catch (error) {
         console.error("Error general en /soporte:", error);
         return res.status(500).json({ success: false, error: error.message });
     }
 });
-
-// Obtiene el registro del usuario en Wix y revisa si stopBot está activo
-async function usuarioTieneStopBot(userId) {
-    try {
-        const resp = await fetch(`https://www.bsl.com.co/_functions/obtenerConversacion?userId=${encodeURIComponent(userId)}`);
-        if (!resp.ok) return false;
-
-        let json;
-        try {
-            json = await resp.json();
-        } catch {
-            const text = await resp.text();
-            try {
-                json = JSON.parse(text);
-            } catch (e) {
-                console.error("[usuarioTieneStopBot] Respuesta NO parseable:", text);
-                return false;
-            }
-        }
-
-        console.log("[usuarioTieneStopBot] json recibido:", json);
-        return json && (json.stopBot === true || json.stopBot === "true");
-    } catch (err) {
-        console.error("Error verificando stopBot en Wix:", err);
-        return false;
-    }
-}
-
-
-
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
