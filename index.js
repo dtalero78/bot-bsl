@@ -88,11 +88,14 @@ app.post('/soporte', async (req, res) => {
 
         // ✅ Obtener conversación con stopBot incluido
         const { mensajes: mensajesHistorial = [], observaciones = "" } = await obtenerConversacionDeWix(from);
+console.log(`[WIX] Consulta previa | userId: ${from} | observaciones: ${observaciones}`);
 
-        if (String(observaciones).toLowerCase().includes("stop")) {
-            console.log(`[STOP] Usuario bloqueado por observaciones: ${from}`);
-            return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones." });
-        }
+if (String(observaciones).toLowerCase().includes("stop")) {
+    console.log(`[STOP] Usuario bloqueado por observaciones: ${from}`);
+    await sendMessage(to, "Hemos pausado esta conversación. Si necesitas reactivarla, comunícate con un asesor.");
+    return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones." });
+}
+
 
 
 
