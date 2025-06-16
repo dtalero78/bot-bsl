@@ -98,6 +98,25 @@ app.post('/soporte', async (req, res) => {
 
         // Solo procesar el primer mensaje (ajusta si quieres procesar más de uno)
         const message = body.messages[0];
+        // 👉 NO procesar mensajes enviados por el propio bot
+if (message.from_me === true) {
+    console.log("Mensaje enviado por el bot, ignorado.");
+    return res.json({
+        success: true,
+        mensaje: "Mensaje enviado por el bot, no procesado."
+    });
+}
+
+// Alternativamente, si tienes el número del bot
+const BOT_NUMBER = "573008021701"; // Reemplaza por tu número real sin @ ni nada
+if (message.from === BOT_NUMBER) {
+    console.log("Mensaje enviado por el bot (from coincide), ignorado.");
+    return res.json({
+        success: true,
+        mensaje: "Mensaje enviado por el bot, no procesado."
+    });
+}
+
         const from = message.from;
         const nombre = message.from_name || "Nombre desconocido";
         const tipo = message.type;
