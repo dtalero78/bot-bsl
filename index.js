@@ -315,34 +315,32 @@ app.post('/soporte', async (req, res) => {
 
             // 💡 Si OpenAI responde con ConsultaCita(...)
             if (respuestaBot.includes("ConsultaCita(")) {
-    const match = respuestaBot.match(/ConsultaCita\(([^)]+)\)/);
-    const numeroIdDetectado = match?.[1]?.trim();
+                const match = respuestaBot.match(/ConsultaCita\(([^)]+)\)/);
+                const numeroIdDetectado = match?.[1]?.trim();
 
-    if (numeroIdDetectado && numeroIdDetectado.toLowerCase() !== "pendiente") {
-        const numeroIdLimpio = String(numeroIdDetectado).replace(/\D/g, '').trim();
+                if (numeroIdDetectado && numeroIdDetectado.toLowerCase() !== "pendiente") {
+                    const citaRes = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${numeroIdLimpio}`);
+                    const rawText = await citaRes.text();
 
-        const citaRes = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${numeroIdLimpio}`);
-        const rawText = await citaRes.text();
+                    let citaJson = {};
+                    try {
+                        citaJson = JSON.parse(rawText);
+                    } catch (e) {
+                        console.error("[❌] Respuesta de Wix NO es JSON:", rawText);
+                        await sendMessage(to, "Hubo un error consultando tu cita. Por favor intenta más tarde.");
+                        return res.json({ success: false, error: "Respuesta de Wix no era JSON" });
+                    }
+                    const citaJson = await citaRes.json();
 
-        let citaJson = {};
-        try {
-            citaJson = JSON.parse(rawText);
-        } catch (e) {
-            console.error("[❌] Respuesta de Wix NO es JSON:", rawText);
-            await sendMessage(to, "Hubo un error consultando tu cita. Por favor intenta más tarde.");
-            return res.json({ success: false, error: "Respuesta de Wix no era JSON" });
-        }
-
-        if (citaJson.body?.found) {
-            respuestaBot = `✅ Consulta encontrada para ${citaJson.body.nombreCompleto}:\n📅 Fecha: ${citaJson.body.fechaAtencion}`;
-        } else {
-            respuestaBot = `❌ No encontramos una cita con ese número de documento.`;
-        }
-    } else {
-        respuestaBot = "Claro, para ayudarte necesito tu número de documento. Por favor escríbelo.";
-    }
-}
-
+                    if (citaJson.body?.found) {
+                        respuestaBot = `✅ Consulta encontrada para ${citaJson.body.nombreCompleto}:\n📅 Fecha: ${citaJson.body.fechaAtencion}`;
+                    } else {
+                        respuestaBot = `❌ No encontramos una cita con ese número de documento.`;
+                    }
+                } else {
+                    respuestaBot = "Claro, para ayudarte necesito tu número de documento. Por favor escríbelo.";
+                }
+            }
 
             // 🧠 Si el usuario directamente mandó un número, procesarlo como númeroId
             if (esNumeroId) {
