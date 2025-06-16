@@ -104,16 +104,23 @@ async function obtenerConversacionDeWix(userId) {
     try {
         const resp = await fetch(`https://www.bsl.com.co/_functions/obtenerConversacion?userId=${encodeURIComponent(userId)}`);
         if (!resp.ok) return { mensajes: [], observaciones: "" };
+
         const json = await resp.json();
-        return { mensajes: json.mensajes || [], observaciones: json.observaciones || "" };
+        const mensajes = json.mensajes || [];
+        const observaciones = json.observaciones || "";
+
+        return { mensajes, observaciones };
     } catch (err) {
         console.error("Error obteniendo historial de Wix:", err);
         return { mensajes: [], observaciones: "" };
     }
 }
 
+
+
 async function sendMessage(to, body) {
-    const resp = await fetch("https://gate.whapi.cloud/messages/text", {
+    const url = "https://gate.whapi.cloud/messages/text";
+    const resp = await fetch(url, {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${WHAPI_KEY}`,
@@ -127,22 +134,73 @@ async function sendMessage(to, body) {
 
 function debeDetenerBot(texto) {
     const mensaje = texto.toLowerCase();
-    return [
-        "foundever",
-        "egreso",
-        "ya terminé mis pruebas",
-        "quiero hablar con un asesor",
-        "puedo hablar con alguien",
-        "me pueden ayudar con algo",
-        "ya pagué"
-    ].some(cond => mensaje.includes(cond));
+
+    const condiciones = [
+        mensaje.includes("foundever"),
+        mensaje.includes("egreso"),
+        mensaje.includes("ya terminé mis pruebas"),
+        mensaje.includes("quiero hablar con un asesor"),
+        mensaje.includes("puedo hablar con alguien"),
+        mensaje.includes("me pueden ayudar con algo"),
+        mensaje.includes("ya pagué"),
+    ];
+
+    return condiciones.some(cond => cond === true);
 }
+
+
 
 app.post('/soporte', async (req, res) => {
     try {
         const body = req.body;
-        const message = body?.messages?.[0];
-        if (!message) return res.status(400).json({ success: false, error: "No hay mensajes." });
+        console.log("Payload recibido:", JSON.stringify(body, null, 2));
+
+        if (!body || !body.messages || !Array.isArray(body.messages)) {
+            return res.status(400).json({ success: false, error: "No hay mensajes en el payload." });
+        }
+
+        const message = body.messages[0];
+        if (message.from_me === true || message.from === BOT_NUMBER) {
+            const bodyText = message?.text?.body?.trim();
+
+            // 🔴 Nueva condición para detener el bot si el usuario terminó las pruebas
+            const debeParar = bodyText === "...transfiriendo con asesor"
+                || bodyText === "...transfiriendo con asesor."
+                || bodyText.includes("ya terminé mis pruebas")  // ✅ Nueva condición aquí
+
+            if (debeParar) {
+                console.log(`🛑 Bot desactivado para ${message.chat_id} por frase especial`);
+
+                await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: message.chat_id.split("@")[0],
+                        observaciones: "stop"
+                    })
+                });
+            }
+
+
+
+            if (bodyText === "...te dejo con el bot 🤖") {
+                console.log(`✅ Bot reactivado manualmente para ${message.chat_id}`);
+
+                await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: message.chat_id.split("@")[0],
+                        observaciones: ""
+                    })
+                });
+            }
+
+
+            console.log("Mensaje enviado por el bot, ignorado.");
+            return res.json({ success: true, mensaje: "Mensaje enviado por el bot, no procesado." });
+        }
+
 
         const from = message.from;
         const nombre = message.from_name || "Nombre desconocido";
@@ -150,41 +208,38 @@ app.post('/soporte', async (req, res) => {
         const chatId = message.chat_id;
         const to = chatId || `${from}@s.whatsapp.net`;
 
-        if (message.from_me || from === BOT_NUMBER) {
-            const bodyText = message?.text?.body?.trim();
+        // ✅ Obtener conversación con stopBot incluido
+        const { mensajes: mensajesHistorial = [], observaciones = "" } = await obtenerConversacionDeWix(from);
+        console.log(`[WIX] Consulta previa | userId: ${from} | observaciones: ${observaciones}`);
 
-            if (["...transfiriendo con asesor", "...transfiriendo con asesor."].includes(bodyText) || bodyText.includes("ya terminé mis pruebas")) {
-                await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: from, observaciones: "stop" })
-                });
-            }
-
-            if (bodyText === "...te dejo con el bot 🤖") {
-                await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: from, observaciones: "" })
-                });
-            }
-
-            return res.json({ success: true, mensaje: "Mensaje del bot ignorado." });
+        if (String(observaciones).toLowerCase().includes("stop")) {
+            console.log(`[STOP] Usuario bloqueado por observaciones: ${from}`);
+            return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones (silencioso)." });
         }
 
-        const { mensajes: mensajesHistorial, observaciones } = await obtenerConversacionDeWix(from);
-        if (observaciones.toLowerCase().includes("stop")) {
-            return res.json({ success: true, mensaje: "Usuario bloqueado." });
-        }
 
-        if (tipo === "image" && message.image?.id) {
-            const imgRes = await fetch(`https://gate.whapi.cloud/media/${message.image.id}`, {
+
+        // 🖼 Procesamiento de imagen
+        if (tipo === "image" && message.image && typeof message.image.id === "string") {
+            const imageId = message.image.id;
+            const mimeType = message.image.mime_type || "image/jpeg";
+            const urlImg = `https://gate.whapi.cloud/media/${imageId}`;
+
+            const whapiRes = await fetch(urlImg, {
                 method: 'GET',
-                headers: { Authorization: `Bearer ${WHAPI_KEY}` }
+                headers: { "Authorization": `Bearer ${WHAPI_KEY}` }
             });
-            const buffer = await imgRes.buffer();
+
+            if (!whapiRes.ok) {
+                const errorText = await whapiRes.text();
+                console.error("Error de Whapi:", errorText);
+                return res.status(500).json({ success: false, error: "No se pudo descargar la imagen de Whapi" });
+            }
+
+            const buffer = await whapiRes.buffer();
             const base64Image = buffer.toString('base64');
 
+            const prompt = "Extrae SOLO el valor pagado (valor de la transferencia en pesos colombianos)...";
             const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
                 method: 'POST',
                 headers: {
@@ -196,45 +251,64 @@ app.post('/soporte', async (req, res) => {
                     messages: [{
                         role: 'user',
                         content: [
-                            { type: 'text', text: "Extrae SOLO el valor pagado (valor de la transferencia en pesos colombianos)..." },
-                            { type: 'image_url', image_url: { url: `data:${message.image.mime_type};base64,${base64Image}` } }
+                            { type: 'text', text: prompt },
+                            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Image}` } }
                         ]
                     }],
                     max_tokens: 50
                 })
             });
+
             const openaiJson = await aiRes.json();
-            const resultado = openaiJson.choices?.[0]?.message?.content || "Error analizando imagen";
+            let resultado = "No se obtuvo respuesta de OpenAI.";
+            if (openaiJson.choices?.[0]?.message) {
+                resultado = openaiJson.choices[0].message.content;
+            } else if (openaiJson.error?.message) {
+                resultado = `Error OpenAI: ${openaiJson.error.message}`;
+            }
 
             const nuevoHistorial = [
                 ...mensajesHistorial,
                 { from: "usuario", mensaje: "(imagen de comprobante)", timestamp: new Date().toISOString() },
                 { from: "sistema", mensaje: `Hemos recibido tu comprobante. Valor detectado: $${resultado}`, timestamp: new Date().toISOString() }
             ];
-            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
-            await sendMessage(to, `Hemos recibido tu comprobante. Valor detectado: $${resultado}\n...transfiriendo con asesor`);
 
-            return res.json({ success: true, mensaje: "Valor detectado.", valor: resultado });
+            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+            await sendMessage(to, `Hemos recibido tu comprobante. Valor detectado: $${resultado}`);
+
+            return res.json({ success: true, mensaje: "Valor detectado en el comprobante", valorDetectado: resultado });
         }
 
-        const userMessage = message.text?.body;
-        if (userMessage && debeDetenerBot(userMessage)) {
-            const nuevoHistorial = [
-                ...mensajesHistorial,
-                { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-                { from: "sistema", mensaje: "Gracias, te paso con un asesor ahora.", timestamp: new Date().toISOString() }
-            ];
-            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
-            await sendMessage(to, "Gracias, te paso con un asesor ahora.\n...transfiriendo con asesor");
-            await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: from, observaciones: "stop" })
-            });
-            return res.json({ success: true, mensaje: "Detenido por condición especial." });
-        }
+if (debeDetenerBot(userMessage)) {
+    const nuevoHistorial = [
+        ...mensajesHistorial,
+        { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+        { from: "sistema", mensaje: "Gracias, te paso con un asesor ahora.", timestamp: new Date().toISOString() }
+    ];
 
-        if (userMessage) {
+    await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+    await sendMessage(to, "Gracias, te paso con un asesor ahora.");
+    
+    await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            userId: from,
+            observaciones: "stop"
+        })
+    });
+
+    return res.json({ success: true, mensaje: "Detenido por condición especial." });
+}
+
+
+
+        // 📝 Procesamiento de textos
+        if (tipo === "text" && message.text?.body) {
+            const userMessage = message.text.body;
+
+
+
             const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
                 method: 'POST',
                 headers: {
@@ -254,21 +328,28 @@ app.post('/soporte', async (req, res) => {
                     max_tokens: 150
                 })
             });
+
             const openaiJson = await aiRes.json();
-            const respuestaBot = openaiJson.choices?.[0]?.message?.content || "Sin respuesta del asistente.";
+            let respuestaBot = "No se obtuvo respuesta de OpenAI.";
+            if (openaiJson.choices?.[0]?.message) {
+                respuestaBot = openaiJson.choices[0].message.content;
+            } else if (openaiJson.error?.message) {
+                respuestaBot = `Error OpenAI: ${openaiJson.error.message}`;
+            }
 
             const nuevoHistorial = [
                 ...mensajesHistorial,
                 { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
                 { from: "sistema", mensaje: respuestaBot, timestamp: new Date().toISOString() }
             ];
+
             await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
             await sendMessage(to, respuestaBot);
 
-            return res.json({ success: true, mensaje: "Respuesta enviada.", respuesta: respuestaBot });
+            return res.json({ success: true, mensaje: "Respuesta enviada al usuario.", respuesta: respuestaBot });
         }
 
-        return res.json({ success: true, mensaje: "Mensaje ignorado." });
+        return res.json({ success: true, mensaje: "Mensaje ignorado (no es texto ni imagen procesable)." });
 
     } catch (error) {
         console.error("Error general en /soporte:", error);
