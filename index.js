@@ -132,6 +132,7 @@ if (message.from === BOT_NUMBER) {
         
         // Trae historial actual desde Wix
         let mensajesHistorial = await obtenerConversacionDeWix(from) || [];
+console.log("🟢 Mensajes previos traídos desde Wix:", mensajesHistorial);
 
         // Si es imagen (comprobante)
         if (tipo === "image" && message.image && typeof message.image.id === "string") {
