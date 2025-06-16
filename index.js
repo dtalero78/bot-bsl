@@ -32,7 +32,7 @@ INFORMACION INSTITUCIONAL:
    Bancolombia: Cta Ahorros 44291192456, cédula 79981585  
    Daviplata: 3014400818  
    Nequi: 3008021701  
-   Después de pagar, sube el comprobante aquí: https://www.bsl.com.co/soporte-pago
+    Al hacerlo envía el soporte de pago por este medio
 
 3. Otros servicios y preguntas:
    - Puedes escribir cualquier pregunta relacionada con exámenes médicos ocupacionales, certificados, horarios, formas de pago, servicios adicionales o cualquier otra consulta sobre BSL y recibirás una respuesta clara y útil.
@@ -40,51 +40,99 @@ INFORMACION INSTITUCIONAL:
 Recuerda: Tu objetivo es resolver la duda del usuario lo más breve posible, con instrucciones claras y si la pregunta no está relacionada con la información de BSL, responde "Por el momento solo puedo resolver dudas sobre exámenes ocupacionales y servicios de BSL".
 `;
 
-// Función utilitaria para enviar mensajes por WhatsApp
+// Función para guardar conversación en Wix
+async function guardarConversacionEnWix({ userId, nombre, mensajes }) {
+    try {
+        const resp = await fetch('https://www.bsl.com.co/_functions/guardarConversacion', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, nombre, mensajes })
+        });
+        const json = await resp.json();
+        console.log("Conversación guardada en Wix:", json);
+    } catch (err) {
+        console.error("Error guardando conversación en Wix:", err);
+    }
+}
+
+// Función para obtener historial de usuario desde Wix (si quieres mantener historial continuo)
+async function obtenerConversacionDeWix(userId) {
+    try {
+        const resp = await fetch(`https://www.bsl.com.co/_functions/obtenerConversacion?userId=${encodeURIComponent(userId)}`);
+        if (!resp.ok) return null;
+        const json = await resp.json();
+        if (json && json.mensajes) return json.mensajes;
+        return [];
+    } catch (err) {
+        console.error("Error obteniendo historial de Wix:", err);
+        return [];
+    }
+}
+
+// Función para enviar mensaje por WhatsApp
 async function sendMessage(to, body) {
-    return fetch("https://gate.whapi.cloud/messages/text", {
+    const url = "https://gate.whapi.cloud/messages/text";
+    const resp = await fetch(url, {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${WHAPI_KEY}`,
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ to, body })
+        body: JSON.stringify({
+            to: to,
+            body: body
+        })
     });
+    const json = await resp.json();
+    console.log("Respuesta envío WhatsApp:", JSON.stringify(json, null, 2));
 }
 
-// Endpoint principal
 app.post('/soporte', async (req, res) => {
     try {
         const body = req.body;
         console.log("Payload recibido:", JSON.stringify(body, null, 2));
+
         if (!body || !body.messages || !Array.isArray(body.messages)) {
             return res.status(400).json({ success: false, error: "No hay mensajes en el payload." });
         }
-        const message = body.messages[0]; // Solo procesamos el primer mensaje por simplicidad
-        const tipo = message.type;
-        const from = message.from || message.chat_id?.replace('@s.whatsapp.net', '');
-        const to = from.includes('@s.whatsapp.net') ? from : `${from}@s.whatsapp.net`;
 
-        // -------- 1. Si es imagen (análisis de comprobante) --------
+        // Solo procesar el primer mensaje (ajusta si quieres procesar más de uno)
+        const message = body.messages[0];
+        const from = message.from;
+        const nombre = message.from_name || "Nombre desconocido";
+        const tipo = message.type;
+        const chatId = message.chat_id;
+        const to = chatId || `${from}@s.whatsapp.net`;
+
+        // Trae historial actual desde Wix
+        let mensajesHistorial = await obtenerConversacionDeWix(from);
+
+        // Si es imagen (comprobante)
         if (tipo === "image" && message.image && typeof message.image.id === "string") {
+            // Descarga imagen y analiza con OpenAI
             const imageId = message.image.id;
             const mimeType = message.image.mime_type || "image/jpeg";
-            const url = `https://gate.whapi.cloud/media/${imageId}`;
-            // Descargar imagen de Whapi
-            const whapiRes = await fetch(url, {
+            const urlImg = `https://gate.whapi.cloud/media/${imageId}`;
+
+            const whapiRes = await fetch(urlImg, {
                 method: 'GET',
                 headers: { "Authorization": `Bearer ${WHAPI_KEY}` }
             });
+
             if (!whapiRes.ok) {
                 const errorText = await whapiRes.text();
                 console.error("Error de Whapi:", errorText);
                 return res.status(500).json({ success: false, error: "No se pudo descargar la imagen de Whapi" });
             }
+
             const buffer = await whapiRes.buffer();
             const base64Image = buffer.toString('base64');
-            // Enviar imagen a OpenAI Vision
+            console.log("Tamaño base64:", base64Image.length);
+
+            const openaiUrl = "https://api.openai.com/v1/chat/completions";
             const prompt = "Extrae SOLO el valor pagado (valor de la transferencia en pesos colombianos) que aparece en este comprobante bancario. Responde solo el valor exacto, sin explicaciones, ni símbolos adicionales.";
-            const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+
+            const aiRes = await fetch(openaiUrl, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${OPENAI_KEY}`,
@@ -102,14 +150,36 @@ app.post('/soporte', async (req, res) => {
                     max_tokens: 50
                 })
             });
+
             const openaiJson = await aiRes.json();
+            console.log("Respuesta cruda de OpenAI:", JSON.stringify(openaiJson, null, 2));
+
             let resultado = "No se obtuvo respuesta de OpenAI.";
             if (openaiJson.choices && openaiJson.choices[0] && openaiJson.choices[0].message) {
                 resultado = openaiJson.choices[0].message.content;
             } else if (openaiJson.error && openaiJson.error.message) {
                 resultado = `Error OpenAI: ${openaiJson.error.message}`;
             }
-            // Responde al usuario por WhatsApp
+
+            // Guarda mensajes (historial)
+            mensajesHistorial = mensajesHistorial || [];
+            mensajesHistorial.push({
+                from: "usuario",
+                mensaje: "(imagen de comprobante)",
+                timestamp: new Date().toISOString()
+            });
+            mensajesHistorial.push({
+                from: "sistema",
+                mensaje: `Hemos recibido tu comprobante. Valor detectado: $${resultado}`,
+                timestamp: new Date().toISOString()
+            });
+
+            await guardarConversacionEnWix({
+                userId: from,
+                nombre: nombre,
+                mensajes: mensajesHistorial
+            });
+
             await sendMessage(to, `Hemos recibido tu comprobante. Valor detectado: $${resultado}`);
             return res.json({
                 success: true,
@@ -118,12 +188,20 @@ app.post('/soporte', async (req, res) => {
             });
         }
 
-        // -------- 2. Si es texto (flujo de conversación con menú OpenAI) --------
+        // Si es texto, responde usando OpenAI (con historial como contexto)
         if (tipo === "text" && message.text && message.text.body) {
-            // Construye contexto de conversación (puedes agregar historial, si lo guardas)
             const userMessage = message.text.body;
-            // Llama a OpenAI (usando el prompt institucional y el mensaje del usuario)
-            const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+
+            // Opcional: puedes armar el contexto como prompt aquí usando historial.
+            // Ejemplo básico:
+            const historialPrompt = mensajesHistorial.map(
+                m => `${m.from === "usuario" ? "Usuario" : "Asistente"}: ${m.mensaje}`
+            ).join('\n');
+            const systemPrompt = `Eres un asistente de WhatsApp para exámenes médicos. Responde de forma amigable y clara, guiando al usuario en todo el proceso.`;
+            const prompt = `${systemPrompt}\n${historialPrompt}\nUsuario: ${userMessage}\nAsistente:`;
+
+            const openaiUrl = "https://api.openai.com/v1/chat/completions";
+            const aiRes = await fetch(openaiUrl, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${OPENAI_KEY}`,
@@ -132,20 +210,47 @@ app.post('/soporte', async (req, res) => {
                 body: JSON.stringify({
                     model: 'gpt-4o',
                     messages: [
-                        { role: 'system', content: promptInstitucional },
+                        { role: 'system', content: systemPrompt },
+                        // Historial puede ir como mensajes previos (mejor para OpenAI)
+                        ...mensajesHistorial.map(m => ({
+                            role: m.from === "usuario" ? "user" : "assistant",
+                            content: m.mensaje
+                        })),
                         { role: 'user', content: userMessage }
                     ],
-                    max_tokens: 300
+                    max_tokens: 150
                 })
             });
+
             const openaiJson = await aiRes.json();
+            console.log("Respuesta cruda de OpenAI:", JSON.stringify(openaiJson, null, 2));
+
             let respuestaBot = "No se obtuvo respuesta de OpenAI.";
             if (openaiJson.choices && openaiJson.choices[0] && openaiJson.choices[0].message) {
                 respuestaBot = openaiJson.choices[0].message.content;
             } else if (openaiJson.error && openaiJson.error.message) {
                 respuestaBot = `Error OpenAI: ${openaiJson.error.message}`;
             }
-            // Envía respuesta por WhatsApp al usuario
+
+            // Actualiza historial
+            mensajesHistorial = mensajesHistorial || [];
+            mensajesHistorial.push({
+                from: "usuario",
+                mensaje: userMessage,
+                timestamp: new Date().toISOString()
+            });
+            mensajesHistorial.push({
+                from: "sistema",
+                mensaje: respuestaBot,
+                timestamp: new Date().toISOString()
+            });
+
+            await guardarConversacionEnWix({
+                userId: from,
+                nombre: nombre,
+                mensajes: mensajesHistorial
+            });
+
             await sendMessage(to, respuestaBot);
             return res.json({
                 success: true,
@@ -154,8 +259,11 @@ app.post('/soporte', async (req, res) => {
             });
         }
 
-        // -------- 3. Si no es texto ni imagen --------
-        return res.status(200).json({ success: false, mensaje: "Tipo de mensaje no soportado." });
+        // Si no es imagen ni texto, ignora
+        return res.json({
+            success: true,
+            mensaje: "Mensaje ignorado (no es texto ni imagen procesable)."
+        });
 
     } catch (error) {
         console.error("Error general en /soporte:", error);
@@ -163,7 +271,6 @@ app.post('/soporte', async (req, res) => {
     }
 });
 
-// Inicia el servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log("Servidor escuchando en puerto", PORT);
