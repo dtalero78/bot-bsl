@@ -81,15 +81,6 @@ INDICACIONES ADICIONALES:
 `;
 
 
-function agregarSiNoEsDuplicado(historial, nuevoMensaje) {
-    const ultimo = historial[historial.length - 1];
-    if (ultimo && ultimo.from === nuevoMensaje.from && ultimo.mensaje === nuevoMensaje.mensaje) {
-        return historial; // No agregar duplicado
-    }
-    return [...historial, nuevoMensaje];
-}
-
-
 async function guardarConversacionEnWix({ userId, nombre, mensajes }) {
     try {
         const resp = await fetch('https://www.bsl.com.co/_functions/guardarConversacion', {
@@ -228,24 +219,20 @@ app.post('/soporte', async (req, res) => {
 
         const userMessage = message.text?.body;
         if (userMessage && debeDetenerBot(userMessage)) {
-            let historialActualizado = agregarSiNoEsDuplicado(mensajesHistorial, {
-    from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString()
-});
-historialActualizado = agregarSiNoEsDuplicado(historialActualizado, {
-    from: "sistema", mensaje: "Gracias, te paso con un asesor ahora.", timestamp: new Date().toISOString()
-});
-await guardarConversacionEnWix({ userId: from, nombre, mensajes: historialActualizado });
-
-            await sendMessage(to, "...transfiriendo con asesor");
+            const nuevoHistorial = [
+                ...mensajesHistorial,
+                { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+                { from: "sistema", mensaje: "Gracias, te paso con un asesor ahora.", timestamp: new Date().toISOString() }
+            ];
+            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+            await sendMessage(to, "Gracias, te paso con un asesor ahora.\n...transfiriendo con asesor");
             await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId: from, observaciones: "stop" })
             });
-
-            return res.json({ success: true, mensaje: "Detenido por condición especial." }); // <-- ESTE RETURN ES CLAVE
+            return res.json({ success: true, mensaje: "Detenido por condición especial." });
         }
-
 
         if (userMessage) {
             const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
