@@ -1,6 +1,4 @@
 
-
-
 require('dotenv').config();
 const express = require('express');
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
@@ -95,206 +93,209 @@ Ejemplos:
 
 `;
 
+
 async function guardarConversacionEnWix({ userId, nombre, mensajes }) {
-    try {
-        const resp = await fetch('https://www.bsl.com.co/_functions/guardarConversacion', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, nombre, mensajes })
-        });
-        const text = await resp.text();
-        try {
-            const json = JSON.parse(text);
-            console.log("Conversación guardada en Wix:", json);
-        } catch {
-            console.error("Respuesta de Wix NO es JSON:", text);
-        }
-    } catch (err) {
-        console.error("Error guardando conversación en Wix:", err);
-    }
+   try {
+       const resp = await fetch('https://www.bsl.com.co/_functions/guardarConversacion', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ userId, nombre, mensajes })
+       });
+       const text = await resp.text();
+       try {
+           const json = JSON.parse(text);
+           console.log("Conversación guardada en Wix:", json);
+       } catch {
+           console.error("Respuesta de Wix NO es JSON:", text);
+       }
+   } catch (err) {
+       console.error("Error guardando conversación en Wix:", err);
+   }
 }
 
 async function obtenerConversacionDeWix(userId) {
-    try {
-        const resp = await fetch(`https://www.bsl.com.co/_functions/obtenerConversacion?userId=${encodeURIComponent(userId)}`);
-        if (!resp.ok) return { mensajes: [], observaciones: "" };
-        const json = await resp.json();
-        return {
-            mensajes: json.mensajes || [],
-            observaciones: json.observaciones || ""
-        };
-    } catch (err) {
-        console.error("Error obteniendo historial de Wix:", err);
-        return { mensajes: [], observaciones: "" };
-    }
+   try {
+       const resp = await fetch(`https://www.bsl.com.co/_functions/obtenerConversacion?userId=${encodeURIComponent(userId)}`);
+       if (!resp.ok) return { mensajes: [], observaciones: "" };
+       const json = await resp.json();
+       return {
+           mensajes: json.mensajes || [],
+           observaciones: json.observaciones || ""
+       };
+   } catch (err) {
+       console.error("Error obteniendo historial de Wix:", err);
+       return { mensajes: [], observaciones: "" };
+   }
 }
 
 async function sendMessage(to, body) {
-    const url = "https://gate.whapi.cloud/messages/text";
-    const resp = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${WHAPI_KEY}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ to, body })
-    });
-    const json = await resp.json();
-    console.log("Respuesta envío WhatsApp:", JSON.stringify(json, null, 2));
+   const url = "https://gate.whapi.cloud/messages/text";
+   const resp = await fetch(url, {
+       method: 'POST',
+       headers: {
+           'Authorization': `Bearer ${WHAPI_KEY}`,
+           'Content-Type': 'application/json'
+       },
+       body: JSON.stringify({ to, body })
+   });
+   const json = await resp.json();
+   console.log("Respuesta envío WhatsApp:", JSON.stringify(json, null, 2));
 }
 
 async function sendPdf(to, pdfUrl) {
-    const url = "https://gate.whapi.cloud/messages/document";
-    const body = {
-        to: to,
-        media: {
-            url: pdfUrl,
-            caption: "Aquí tienes tu certificado médico en PDF."
-        }
-    };
-    const resp = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${WHAPI_KEY}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
-    });
-    const json = await resp.json();
-    console.log("Respuesta Whapi (PDF):", JSON.stringify(json, null, 2));
+   const url = "https://gate.whapi.cloud/messages/document";
+   const body = {
+       to: to,
+       media: {
+           url: pdfUrl,
+           caption: "Aquí tienes tu certificado médico en PDF."
+       }
+   };
+   const resp = await fetch(url, {
+       method: 'POST',
+       headers: {
+           'Authorization': `Bearer ${WHAPI_KEY}`,
+           'Content-Type': 'application/json'
+       },
+       body: JSON.stringify(body)
+   });
+   const json = await resp.json();
+   console.log("Respuesta Whapi (PDF):", JSON.stringify(json, null, 2));
 }
 
 async function generarPdfDesdeApi2Pdf(documento) {
-    const apiEndpoint = 'https://v2018.api2pdf.com/chrome/url';
-    const url = `https://www.bsl.com.co/descarga-whp/${documento}`;
+   const apiEndpoint = 'https://v2018.api2pdf.com/chrome/url';
+   const url = `https://www.bsl.com.co/descarga-whp/${documento}`;
 
-    const response = await fetch(apiEndpoint, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': API2PDF_KEY
-        },
-        body: JSON.stringify({
-            url,
-            inlinePdf: false,
-            fileName: `${documento}.pdf`
-        })
-    });
+   const response = await fetch(apiEndpoint, {
+       method: 'POST',
+       headers: {
+           'Content-Type': 'application/json',
+           'Authorization': API2PDF_KEY
+       },
+       body: JSON.stringify({
+           url,
+           inlinePdf: false,
+           fileName: `${documento}.pdf`
+       })
+   });
 
-    const json = await response.json();
-    if (!json.success) {
-        throw new Error(json.error);
-    }
+   const json = await response.json();
+   if (!json.success) {
+       throw new Error(json.error);
+   }
 
-    return json.pdf;
+   return json.pdf;
 }
 
 app.post('/soporte', async (req, res) => {
-    try {
-        const body = req.body;
-        const message = body?.messages?.[0];
-        if (!message) return res.status(400).json({ success: false, error: "No hay mensajes." });
+   try {
+       const body = req.body;
+       const message = body?.messages?.[0];
+       if (!message) return res.status(400).json({ success: false, error: "No hay mensajes." });
 
-        if (message.from_me || message.from === BOT_NUMBER) {
-            return res.json({ success: true, mensaje: "Mensaje del bot ignorado." });
-        }
+       if (message.from_me || message.from === BOT_NUMBER) {
+           return res.json({ success: true, mensaje: "Mensaje del bot ignorado." });
+       }
 
-        const from = message.from;
-        const nombre = message.from_name || "Desconocido";
-        const tipo = message.type;
-        const chatId = message.chat_id;
-        const to = chatId || `${from}@s.whatsapp.net`;
+       const from = message.from;
+       const nombre = message.from_name || "Desconocido";
+       const tipo = message.type;
+       const chatId = message.chat_id;
+       const to = chatId || `${from}@s.whatsapp.net`;
 
-        const { mensajes: historial = [], observaciones = "" } = await obtenerConversacionDeWix(from);
-        if (String(observaciones).toLowerCase().includes("stop")) {
-            return res.json({ success: true, mensaje: "Bot detenido para este usuario." });
-        }
+       const { mensajes: historial = [], observaciones = "" } = await obtenerConversacionDeWix(from);
+       if (String(observaciones).toLowerCase().includes("stop")) {
+           return res.json({ success: true, mensaje: "Bot detenido para este usuario." });
+       }
 
-        if (tipo === "image" && message.image?.id) {
-            const imageId = message.image.id;
-            const mimeType = message.image.mime_type || "image/jpeg";
-            const urlImg = `https://gate.whapi.cloud/media/${imageId}`;
-            const whapiRes = await fetch(urlImg, {
-                method: 'GET',
-                headers: { "Authorization": `Bearer ${WHAPI_KEY}` }
-            });
-            const buffer = await whapiRes.buffer();
-            const base64Image = buffer.toString('base64');
+       if (tipo === "image" && message.image?.id) {
+           const imageId = message.image.id;
+           const mimeType = message.image.mime_type || "image/jpeg";
+           const urlImg = `https://gate.whapi.cloud/media/${imageId}`;
+           const whapiRes = await fetch(urlImg, {
+               method: 'GET',
+               headers: { "Authorization": `Bearer ${WHAPI_KEY}` }
+           });
+           const buffer = await whapiRes.buffer();
+           const base64Image = buffer.toString('base64');
 
-            const prompt = "Extrae SOLO el valor pagado (valor de la transferencia en pesos colombianos)...";
-            const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${OPENAI_KEY}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    model: 'gpt-4o',
-                    messages: [{
-                        role: 'user',
-                        content: [
-                            { type: 'text', text: prompt },
-                            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Image}` } }
-                        ]
-                    }],
-                    max_tokens: 50
-                })
-            });
+           const prompt = "Extrae SOLO el valor pagado (valor de la transferencia en pesos colombianos)...";
+           const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+               method: 'POST',
+               headers: {
+                   'Authorization': `Bearer ${OPENAI_KEY}`,
+                   'Content-Type': 'application/json'
+               },
+               body: JSON.stringify({
+                   model: 'gpt-4o',
+                   messages: [{
+                       role: 'user',
+                       content: [
+                           { type: 'text', text: prompt },
+                           { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Image}` } }
+                       ]
+                   }],
+                   max_tokens: 50
+               })
+           });
 
-            const openaiJson = await aiRes.json();
-            let resultado = openaiJson.choices?.[0]?.message?.content || "No se detectó valor.";
-            const pagoValido = resultado.replace(/[^0-9]/g, '') === "46000";
+           const openaiJson = await aiRes.json();
+           let resultado = openaiJson.choices?.[0]?.message?.content || "No se detectó valor.";
+           const pagoValido = resultado.replace(/[^0-9]/g, '') === "46000";
 
-            const nuevoHistorial = [
-                ...historial,
-                { from: "usuario", mensaje: "(comprobante)", timestamp: new Date().toISOString() },
-                { from: "sistema", mensaje: `Valor detectado: $${resultado}`, timestamp: new Date().toISOString() }
-            ];
-            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+           const nuevoHistorial = [
+               ...historial,
+               { from: "usuario", mensaje: "(comprobante)", timestamp: new Date().toISOString() },
+               { from: "sistema", mensaje: `Valor detectado: $${resultado}`, timestamp: new Date().toISOString() }
+           ];
 
-            if (pagoValido) {
-                await sendMessage(to, "✅ Pago recibido por $46.000. Por favor responde con tu número de documento.");
-            } else {
-                await sendMessage(to, `⚠️ Detectamos un valor diferente: $${resultado}. Por favor revisa y vuelve a enviar el comprobante.`);
-            }
+           if (pagoValido) {
+               nuevoHistorial.push({ from: "sistema", mensaje: "esperandoDocumento", timestamp: new Date().toISOString() });
+               await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+               await sendMessage(to, "✅ Pago recibido por $46.000. Por favor responde con tu número de documento.");
+           } else {
+               await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+               await sendMessage(to, `⚠️ Detectamos un valor diferente: $${resultado}. Por favor revisa y vuelve a enviar el comprobante.`);
+           }
 
-            return res.json({ success: true, valorDetectado: resultado });
-        }
+           return res.json({ success: true, valorDetectado: resultado });
+       }
 
-        if (tipo === "text" && message.text?.body) {
-            const userMessage = message.text.body.trim();
-            const esNumeroId = /^\d{7,10}$/.test(userMessage);
-            const pagoRegistrado = historial.some(m => m.mensaje.includes("Valor detectado: $46.000"));
+       if (tipo === "text" && message.text?.body) {
+           const userMessage = message.text.body.trim();
+           const esNumeroId = /^\d{7,10}$/.test(userMessage);
+           const esperaDocumento = historial.some(m => m.mensaje === "esperandoDocumento");
 
-            if (esNumeroId && pagoRegistrado) {
-                try {
-                    const pdfUrl = await generarPdfDesdeApi2Pdf(userMessage);
-                    await sendPdf(to, pdfUrl);
-                    const nuevoHistorial = [
-                        ...historial,
-                        { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-                        { from: "sistema", mensaje: `Certificado enviado: ${pdfUrl}`, timestamp: new Date().toISOString() }
-                    ];
-                    await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
-                    return res.json({ success: true, mensaje: "Certificado enviado correctamente." });
-                } catch (err) {
-                    await sendMessage(to, "❌ No pudimos generar tu certificado. Intenta más tarde.");
-                    return res.status(500).json({ success: false, error: err.message });
-                }
-            }
+           if (esNumeroId && esperaDocumento) {
+               try {
+                   const pdfUrl = await generarPdfDesdeApi2Pdf(userMessage);
+                   await sendPdf(to, pdfUrl);
+                   const nuevoHistorial = [
+                       ...historial,
+                       { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+                       { from: "sistema", mensaje: `Certificado enviado: ${pdfUrl}`, timestamp: new Date().toISOString() }
+                   ];
+                   await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+                   return res.json({ success: true, mensaje: "Certificado enviado correctamente." });
+               } catch (err) {
+                   await sendMessage(to, "❌ No pudimos generar tu certificado. Intenta más tarde.");
+                   return res.status(500).json({ success: false, error: err.message });
+               }
+           }
 
-            await sendMessage(to, "🧠 Mensaje recibido. Estoy procesando tu solicitud.");
-            return res.json({ success: true, mensaje: "Texto procesado (sin acción PDF)." });
-        }
+           await sendMessage(to, "🧠 Mensaje recibido. Estoy procesando tu solicitud.");
+           return res.json({ success: true, mensaje: "Texto procesado." });
+       }
 
-        return res.json({ success: true, mensaje: "Mensaje no procesable." });
-    } catch (error) {
-        console.error("Error en /soporte:", error);
-        return res.status(500).json({ success: false, error: error.message });
-    }
+       return res.json({ success: true, mensaje: "Mensaje no procesable." });
+   } catch (error) {
+       console.error("Error en /soporte:", error);
+       return res.status(500).json({ success: false, error: error.message });
+   }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log("Servidor escuchando en puerto", PORT);
+   console.log("Servidor escuchando en puerto", PORT);
 });
