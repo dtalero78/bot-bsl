@@ -83,10 +83,12 @@ app.post('/soporte', async (req, res) => {
         // ✅ Obtener conversación con stopBot incluido
         const { mensajes: mensajesHistorial = [], stopBot = false } = await obtenerConversacionDeWix(from);
 
-if (stopBot === true || String(stopBot).toLowerCase() === "true") {
-            console.log(`[STOP] Usuario bloqueado por stopBot: ${from}`);
-            return res.json({ success: true, mensaje: "Usuario bloqueado por stopBot." });
-        }
+        const stop = stopBot === true || stopBot === "true" || stopBot === 1 || stopBot === "1";
+if (stop) {
+  console.log(`[STOP] Usuario bloqueado por stopBot: ${from}`);
+  return res.json({ success: true, mensaje: "Usuario bloqueado por stopBot." });
+}
+
 
         // 🖼 Procesamiento de imagen
         if (tipo === "image" && message.image && typeof message.image.id === "string") {
