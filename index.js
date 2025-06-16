@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -105,23 +105,23 @@ app.post('/soporte', async (req, res) => {
         // Solo procesar el primer mensaje (ajusta si quieres procesar más de uno)
         const message = body.messages[0];
         // 👉 NO procesar mensajes enviados por el propio bot
-if (message.from_me === true) {
-    console.log("Mensaje enviado por el bot, ignorado.");
-    return res.json({
-        success: true,
-        mensaje: "Mensaje enviado por el bot, no procesado."
-    });
-}
+        if (message.from_me === true) {
+            console.log("Mensaje enviado por el bot, ignorado.");
+            return res.json({
+                success: true,
+                mensaje: "Mensaje enviado por el bot, no procesado."
+            });
+        }
 
-// Alternativamente, si tienes el número del bot
-const BOT_NUMBER = "573008021701"; // Reemplaza por tu número real sin @ ni nada
-if (message.from === BOT_NUMBER) {
-    console.log("Mensaje enviado por el bot (from coincide), ignorado.");
-    return res.json({
-        success: true,
-        mensaje: "Mensaje enviado por el bot, no procesado."
-    });
-}
+        // Alternativamente, si tienes el número del bot
+        const BOT_NUMBER = "573008021701"; // Reemplaza por tu número real sin @ ni nada
+        if (message.from === BOT_NUMBER) {
+            console.log("Mensaje enviado por el bot (from coincide), ignorado.");
+            return res.json({
+                success: true,
+                mensaje: "Mensaje enviado por el bot, no procesado."
+            });
+        }
 
         const from = message.from;
         const nombre = message.from_name || "Nombre desconocido";
@@ -129,10 +129,19 @@ if (message.from === BOT_NUMBER) {
         const chatId = message.chat_id;
         const to = chatId || `${from}@s.whatsapp.net`;
 
-        
+        // ⛔️ Chequea si el usuario tiene stopBot activado
+        if (await usuarioTieneStopBot(from)) {
+            console.log(`[SOFT BLOCK] Usuario con stopBot=true, no se responde: ${from}`);
+            return res.json({
+                success: true,
+                mensaje: "Usuario bloqueado por stopBot."
+            });
+        }
+
+
         // Trae historial actual desde Wix
         let mensajesHistorial = await obtenerConversacionDeWix(from) || [];
-console.log("🟢 Mensajes previos traídos desde Wix:", mensajesHistorial);
+        console.log("🟢 Mensajes previos traídos desde Wix:", mensajesHistorial);
 
         // Si es imagen (comprobante)
         if (tipo === "image" && message.image && typeof message.image.id === "string") {
@@ -200,7 +209,7 @@ console.log("🟢 Mensajes previos traídos desde Wix:", mensajesHistorial);
                 mensaje: `Hemos recibido tu comprobante. Valor detectado: $${resultado}`,
                 timestamp: new Date().toISOString()
             });
-console.log("Historial que voy a guardar:", JSON.stringify(mensajesHistorial, null, 2));
+            console.log("Historial que voy a guardar:", JSON.stringify(mensajesHistorial, null, 2));
 
             await guardarConversacionEnWix({
                 userId: from,
@@ -272,7 +281,7 @@ console.log("Historial que voy a guardar:", JSON.stringify(mensajesHistorial, nu
                 mensaje: respuestaBot,
                 timestamp: new Date().toISOString()
             });
-console.log("Historial que voy a guardar:", JSON.stringify(mensajesHistorial, null, 2));
+            console.log("Historial que voy a guardar:", JSON.stringify(mensajesHistorial, null, 2));
 
             await guardarConversacionEnWix({
                 userId: from,
@@ -299,6 +308,20 @@ console.log("Historial que voy a guardar:", JSON.stringify(mensajesHistorial, nu
         return res.status(500).json({ success: false, error: error.message });
     }
 });
+
+// Obtiene el registro del usuario en Wix y revisa si stopBot está activo
+async function usuarioTieneStopBot(userId) {
+    try {
+        const resp = await fetch(`https://www.bsl.com.co/_functions/obtenerConversacion?userId=${encodeURIComponent(userId)}`);
+        if (!resp.ok) return false; // Si no existe el registro, no está bloqueado
+        const json = await resp.json();
+        return json && json.stopBot === true;
+    } catch (err) {
+        console.error("Error verificando stopBot en Wix:", err);
+        return false; // Por defecto deja pasar si hay error
+    }
+}
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
