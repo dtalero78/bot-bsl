@@ -78,6 +78,17 @@ INDICACIONES ADICIONALES:
 
 - Si el usuario dice que quiere hablar con un asesor, o pide ayuda de una persona, **escribe internamente la frase especial exacta: "...transfiriendo con asesor"** SIN NINGUN PUNTO AL FINAL. Eso hará que el sistema detenga el bot.
 - Después de analizar una imagen enviada por el usuario, **responde normalmente con el análisis** y luego **escribe también la frase: "...transfiriendo con asesor"** para detener el bot tras la respuesta.
+
+📌 DETECCIÓN AUTOMÁTICA DE CONSULTAS:
+
+- Si el usuario pregunta por la fecha de su consulta médica, debes responder con: 
+  ConsultaCita(numeroId)
+  donde "numeroId" es el número de documento del paciente si ya lo tienes, o la palabra "pendiente" si necesitas que lo escriba.
+
+Ejemplos:
+- Si el usuario pregunta "¿cuándo es mi cita?" y ya sabes su documento: escribe exactamente → ConsultaCita(12345678)
+- Si no tienes el número de documento, escribe exactamente → ConsultaCita(pendiente)
+
 `;
 
 
@@ -262,10 +273,18 @@ app.post('/soporte', async (req, res) => {
 
         // 📝 Procesamiento de textos
         if (tipo === "text" && message.text?.body) {
-            const userMessage = message.text.body;
+            const userMessage = message.text.body.trim();
+            const lowerMessage = userMessage.toLowerCase();
 
+            // Detectar si el mensaje del usuario es un número de documento (7 a 10 dígitos)
+            const esNumeroId = /^\d{7,10}$/.test(userMessage);
 
+            // Obtener un número previo desde el historial si existe
+            const numeroIdPrevio = mensajesHistorial.find(
+                m => m.mensaje && /^\d{7,10}$/.test(m.mensaje)
+            )?.mensaje;
 
+            // Llamada a OpenAI con contexto institucional e historial
             const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
                 method: 'POST',
                 headers: {
@@ -282,7 +301,7 @@ app.post('/soporte', async (req, res) => {
                         })),
                         { role: 'user', content: userMessage }
                     ],
-                    max_tokens: 150
+                    max_tokens: 200
                 })
             });
 
@@ -294,6 +313,38 @@ app.post('/soporte', async (req, res) => {
                 respuestaBot = `Error OpenAI: ${openaiJson.error.message}`;
             }
 
+            // 💡 Si OpenAI responde con ConsultaCita(...)
+            if (respuestaBot.includes("ConsultaCita(")) {
+                const match = respuestaBot.match(/ConsultaCita\(([^)]+)\)/);
+                const numeroIdDetectado = match?.[1]?.trim();
+
+                if (numeroIdDetectado && numeroIdDetectado.toLowerCase() !== "pendiente") {
+                    const citaRes = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${numeroIdDetectado}`);
+                    const citaJson = await citaRes.json();
+
+                    if (citaJson.body?.found) {
+                        respuestaBot = `✅ Consulta encontrada para ${citaJson.body.nombreCompleto}:\n📅 Fecha: ${citaJson.body.fechaAtencion}`;
+                    } else {
+                        respuestaBot = `❌ No encontramos una cita con ese número de documento.`;
+                    }
+                } else {
+                    respuestaBot = "Claro, para ayudarte necesito tu número de documento. Por favor escríbelo.";
+                }
+            }
+
+            // 🧠 Si el usuario directamente mandó un número, procesarlo como númeroId
+            if (esNumeroId) {
+                const citaRes = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${userMessage}`);
+                const citaJson = await citaRes.json();
+
+                if (citaJson.body?.found) {
+                    respuestaBot = `✅ Consulta encontrada para ${citaJson.body.nombreCompleto}:\n📅 Fecha: ${citaJson.body.fechaAtencion}`;
+                } else {
+                    respuestaBot = `❌ No encontramos una cita con ese número de documento.`;
+                }
+            }
+
+            // Guardar nuevo mensaje en historial y responder
             const nuevoHistorial = [
                 ...mensajesHistorial,
                 { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
@@ -305,6 +356,7 @@ app.post('/soporte', async (req, res) => {
 
             return res.json({ success: true, mensaje: "Respuesta enviada al usuario.", respuesta: respuestaBot });
         }
+
 
         return res.json({ success: true, mensaje: "Mensaje ignorado (no es texto ni imagen procesable)." });
 
