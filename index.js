@@ -322,17 +322,19 @@ app.post('/soporte', async (req, res) => {
         const numeroIdLimpio = String(numeroIdDetectado).replace(/\D/g, '').trim();
 
         const citaRes = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${numeroIdLimpio}`);
-        const rawText = await citaRes.text();
+const rawText = await citaRes.text();
 
-        let citaJson = {};
-        try {
-            citaJson = JSON.parse(rawText);
-            console.log("[📥] Datos recibidos de Wix para númeroId:", numeroIdLimpio, JSON.stringify(citaJson, null, 2));
-        } catch (e) {
-            console.error("[❌] Respuesta de Wix NO es JSON:", rawText);
-            await sendMessage(to, "Hubo un error consultando tu cita. Por favor intenta más tarde.");
-            return res.json({ success: false, error: "Respuesta de Wix no era JSON" });
-        }
+console.log("[📨] Respuesta cruda de Wix:", rawText); // <--- ESTE CONSOLE
+
+let citaJson = {};
+try {
+    citaJson = JSON.parse(rawText);
+} catch (e) {
+    console.error("[❌] Respuesta de Wix NO es JSON:", rawText);
+    await sendMessage(to, "Hubo un error consultando tu cita. Por favor intenta más tarde.");
+    return res.json({ success: false, error: "Respuesta de Wix no era JSON" });
+}
+
 
         if (citaJson.body?.found) {
             respuestaBot = `✅ Consulta encontrada para ${citaJson.body.nombreCompleto}:\n📅 Fecha: ${citaJson.body.fechaAtencion}`;
@@ -343,7 +345,6 @@ app.post('/soporte', async (req, res) => {
         respuestaBot = "Claro, para ayudarte necesito tu número de documento. Por favor escríbelo.";
     }
 }
-
 
 
             // 🧠 Si el usuario directamente mandó un número, procesarlo como númeroId
