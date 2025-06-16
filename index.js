@@ -1,3 +1,6 @@
+
+
+
 require('dotenv').config();
 const express = require('express');
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
@@ -8,6 +11,7 @@ app.use(express.json({ limit: '10mb' }));
 const OPENAI_KEY = process.env.OPENAI_KEY;
 const WHAPI_KEY = process.env.WHAPI_KEY;
 const BOT_NUMBER = "573008021701";
+const API2PDF_KEY = process.env.API2PDF_KEY;
 
 const promptInstitucional = `
 Eres un asistente virtual para exámenes médicos ocupacionales de la empresa BSL en Colombia...
@@ -91,7 +95,6 @@ Ejemplos:
 
 `;
 
-
 async function guardarConversacionEnWix({ userId, nombre, mensajes }) {
     try {
         const resp = await fetch('https://www.bsl.com.co/_functions/guardarConversacion', {
@@ -103,7 +106,7 @@ async function guardarConversacionEnWix({ userId, nombre, mensajes }) {
         try {
             const json = JSON.parse(text);
             console.log("Conversación guardada en Wix:", json);
-        } catch (parseError) {
+        } catch {
             console.error("Respuesta de Wix NO es JSON:", text);
         }
     } catch (err) {
@@ -115,19 +118,16 @@ async function obtenerConversacionDeWix(userId) {
     try {
         const resp = await fetch(`https://www.bsl.com.co/_functions/obtenerConversacion?userId=${encodeURIComponent(userId)}`);
         if (!resp.ok) return { mensajes: [], observaciones: "" };
-
         const json = await resp.json();
-        const mensajes = json.mensajes || [];
-        const observaciones = json.observaciones || "";
-
-        return { mensajes, observaciones };
+        return {
+            mensajes: json.mensajes || [],
+            observaciones: json.observaciones || ""
+        };
     } catch (err) {
         console.error("Error obteniendo historial de Wix:", err);
         return { mensajes: [], observaciones: "" };
     }
 }
-
-
 
 async function sendMessage(to, body) {
     const url = "https://gate.whapi.cloud/messages/text";
@@ -143,91 +143,81 @@ async function sendMessage(to, body) {
     console.log("Respuesta envío WhatsApp:", JSON.stringify(json, null, 2));
 }
 
+async function sendPdf(to, pdfUrl) {
+    const url = "https://gate.whapi.cloud/messages/document";
+    const body = {
+        to: to,
+        media: {
+            url: pdfUrl,
+            caption: "Aquí tienes tu certificado médico en PDF."
+        }
+    };
+    const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${WHAPI_KEY}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+    });
+    const json = await resp.json();
+    console.log("Respuesta Whapi (PDF):", JSON.stringify(json, null, 2));
+}
+
+async function generarPdfDesdeApi2Pdf(documento) {
+    const apiEndpoint = 'https://v2018.api2pdf.com/chrome/url';
+    const url = `https://www.bsl.com.co/descarga-whp/${documento}`;
+
+    const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': API2PDF_KEY
+        },
+        body: JSON.stringify({
+            url,
+            inlinePdf: false,
+            fileName: `${documento}.pdf`
+        })
+    });
+
+    const json = await response.json();
+    if (!json.success) {
+        throw new Error(json.error);
+    }
+
+    return json.pdf;
+}
+
 app.post('/soporte', async (req, res) => {
     try {
         const body = req.body;
-        console.log("Payload recibido:", JSON.stringify(body, null, 2));
+        const message = body?.messages?.[0];
+        if (!message) return res.status(400).json({ success: false, error: "No hay mensajes." });
 
-        if (!body || !body.messages || !Array.isArray(body.messages)) {
-            return res.status(400).json({ success: false, error: "No hay mensajes en el payload." });
+        if (message.from_me || message.from === BOT_NUMBER) {
+            return res.json({ success: true, mensaje: "Mensaje del bot ignorado." });
         }
-
-        const message = body.messages[0];
-        if (message.from_me === true || message.from === BOT_NUMBER) {
-            const bodyText = message?.text?.body?.trim();
-
-            const frasesDeDetencion = [
-                "...transfiriendo con asesor",
-                "...transfiriendo con asesor.",
-                "ya terminé mis las pruebas",
-                "ya termine mis las pruebas"
-            ];
-            if (bodyText && frasesDeDetencion.includes(bodyText.toLowerCase())) {
-                console.log(`🛑 Bot desactivado manualmente para ${message.chat_id}`);
-
-                await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        userId: message.chat_id.split("@")[0],
-                        observaciones: "stop"
-                    })
-                });
-            }
-
-            if (bodyText === "...te dejo con el bot 🤖") {
-                console.log(`✅ Bot reactivado manualmente para ${message.chat_id}`);
-
-                await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        userId: message.chat_id.split("@")[0],
-                        observaciones: ""
-                    })
-                });
-            }
-
-
-            console.log("Mensaje enviado por el bot, ignorado.");
-            return res.json({ success: true, mensaje: "Mensaje enviado por el bot, no procesado." });
-        }
-
 
         const from = message.from;
-        const nombre = message.from_name || "Nombre desconocido";
+        const nombre = message.from_name || "Desconocido";
         const tipo = message.type;
         const chatId = message.chat_id;
         const to = chatId || `${from}@s.whatsapp.net`;
 
-        // ✅ Obtener conversación con stopBot incluido
-        const { mensajes: mensajesHistorial = [], observaciones = "" } = await obtenerConversacionDeWix(from);
-        console.log(`[WIX] Consulta previa | userId: ${from} | observaciones: ${observaciones}`);
-
+        const { mensajes: historial = [], observaciones = "" } = await obtenerConversacionDeWix(from);
         if (String(observaciones).toLowerCase().includes("stop")) {
-            console.log(`[STOP] Usuario bloqueado por observaciones: ${from}`);
-            return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones (silencioso)." });
+            return res.json({ success: true, mensaje: "Bot detenido para este usuario." });
         }
 
-
-
-        // 🖼 Procesamiento de imagen
-        if (tipo === "image" && message.image && typeof message.image.id === "string") {
+        if (tipo === "image" && message.image?.id) {
             const imageId = message.image.id;
             const mimeType = message.image.mime_type || "image/jpeg";
             const urlImg = `https://gate.whapi.cloud/media/${imageId}`;
-
             const whapiRes = await fetch(urlImg, {
                 method: 'GET',
                 headers: { "Authorization": `Bearer ${WHAPI_KEY}` }
             });
-
-            if (!whapiRes.ok) {
-                const errorText = await whapiRes.text();
-                console.error("Error de Whapi:", errorText);
-                return res.status(500).json({ success: false, error: "No se pudo descargar la imagen de Whapi" });
-            }
-
             const buffer = await whapiRes.buffer();
             const base64Image = buffer.toString('base64');
 
@@ -252,142 +242,54 @@ app.post('/soporte', async (req, res) => {
             });
 
             const openaiJson = await aiRes.json();
-            let resultado = "No se obtuvo respuesta de OpenAI.";
-            if (openaiJson.choices?.[0]?.message) {
-                resultado = openaiJson.choices[0].message.content;
-            } else if (openaiJson.error?.message) {
-                resultado = `Error OpenAI: ${openaiJson.error.message}`;
-            }
+            let resultado = openaiJson.choices?.[0]?.message?.content || "No se detectó valor.";
+            const pagoValido = resultado.replace(/[^0-9]/g, '') === "46000";
 
             const nuevoHistorial = [
-                ...mensajesHistorial,
-                { from: "usuario", mensaje: "(imagen de comprobante)", timestamp: new Date().toISOString() },
-                { from: "sistema", mensaje: `Hemos recibido tu comprobante. Valor detectado: $${resultado}`, timestamp: new Date().toISOString() }
+                ...historial,
+                { from: "usuario", mensaje: "(comprobante)", timestamp: new Date().toISOString() },
+                { from: "sistema", mensaje: `Valor detectado: $${resultado}`, timestamp: new Date().toISOString() }
             ];
-
             await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
-            await sendMessage(to, `Hemos recibido tu comprobante. Valor detectado: $${resultado}`);
 
-            return res.json({ success: true, mensaje: "Valor detectado en el comprobante", valorDetectado: resultado });
+            if (pagoValido) {
+                await sendMessage(to, "✅ Pago recibido por $46.000. Por favor responde con tu número de documento.");
+            } else {
+                await sendMessage(to, `⚠️ Detectamos un valor diferente: $${resultado}. Por favor revisa y vuelve a enviar el comprobante.`);
+            }
+
+            return res.json({ success: true, valorDetectado: resultado });
         }
 
-        // 📝 Procesamiento de textos
         if (tipo === "text" && message.text?.body) {
             const userMessage = message.text.body.trim();
-            const lowerMessage = userMessage.toLowerCase();
-
-            // Detectar si el mensaje del usuario es un número de documento (7 a 10 dígitos)
             const esNumeroId = /^\d{7,10}$/.test(userMessage);
+            const pagoRegistrado = historial.some(m => m.mensaje.includes("Valor detectado: $46.000"));
 
-            // Obtener un número previo desde el historial si existe
-            const numeroIdPrevio = mensajesHistorial.find(
-                m => m.mensaje && /^\d{7,10}$/.test(m.mensaje)
-            )?.mensaje;
-
-            // Llamada a OpenAI con contexto institucional e historial
-            const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${OPENAI_KEY}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    model: 'gpt-4o',
-                    messages: [
-                        { role: 'system', content: promptInstitucional },
-                        ...mensajesHistorial.map(m => ({
-                            role: m.from === "usuario" ? "user" : "assistant",
-                            content: m.mensaje
-                        })),
-                        { role: 'user', content: userMessage }
-                    ],
-                    max_tokens: 200
-                })
-            });
-
-            const openaiJson = await aiRes.json();
-            let respuestaBot = "No se obtuvo respuesta de OpenAI.";
-            if (openaiJson.choices?.[0]?.message) {
-                respuestaBot = openaiJson.choices[0].message.content;
-            } else if (openaiJson.error?.message) {
-                respuestaBot = `Error OpenAI: ${openaiJson.error.message}`;
-            }
-
-            // 💡 Si OpenAI responde con ConsultaCita(...)
-            if (respuestaBot.includes("ConsultaCita(")) {
-                const match = respuestaBot.match(/ConsultaCita\(([^)]+)\)/);
-                const numeroIdDetectado = match?.[1]?.trim();
-
-                if (numeroIdDetectado && numeroIdDetectado.toLowerCase() !== "pendiente") {
-                    const numeroIdLimpio = String(numeroIdDetectado).replace(/\D/g, '').trim();
-
-                    try {
-                        const citaRes = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${numeroIdLimpio}`);
-                        const rawText = await citaRes.text();
-
-                        console.log("[📨] Respuesta cruda de Wix:", rawText);
-
-                        let citaJson = {};
-                        try {
-                            citaJson = JSON.parse(rawText);
-                        } catch (jsonError) {
-                            console.error("[❌] Respuesta de Wix NO es JSON:", rawText);
-                            await sendMessage(to, "Hubo un error consultando tu cita. Por favor intenta más tarde.");
-                            return res.json({ success: false, error: "Respuesta no válida desde Wix" });
-                        }
-
-                        console.log("[✅] JSON parseado:", citaJson);
-
-                        if (citaJson.found) {
-                            respuestaBot = `✅ Consulta encontrada para ${citaJson.nombreCompleto}:\n📅 Fecha: ${citaJson.fechaAtencion}`;
-                        } else {
-                            respuestaBot = `❌ No encontramos una cita con ese número de documento.`;
-                        }
-
-                    } catch (fetchError) {
-                        console.error("[❌] Error general al consultar Wix:", fetchError.message);
-                        await sendMessage(to, "No pudimos consultar tu cita en este momento. Intenta más tarde.");
-                        return res.json({ success: false, error: fetchError.message });
-                    }
-
-                } else {
-                    respuestaBot = "Claro, para ayudarte necesito tu número de documento. Por favor escríbelo.";
+            if (esNumeroId && pagoRegistrado) {
+                try {
+                    const pdfUrl = await generarPdfDesdeApi2Pdf(userMessage);
+                    await sendPdf(to, pdfUrl);
+                    const nuevoHistorial = [
+                        ...historial,
+                        { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+                        { from: "sistema", mensaje: `Certificado enviado: ${pdfUrl}`, timestamp: new Date().toISOString() }
+                    ];
+                    await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+                    return res.json({ success: true, mensaje: "Certificado enviado correctamente." });
+                } catch (err) {
+                    await sendMessage(to, "❌ No pudimos generar tu certificado. Intenta más tarde.");
+                    return res.status(500).json({ success: false, error: err.message });
                 }
             }
 
-
-
-
-            // 🧠 Si el usuario directamente mandó un número, procesarlo como númeroId
-            if (esNumeroId) {
-                const citaRes = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${userMessage}`);
-                const citaJson = await citaRes.json();
-
-                if (citaJson.body?.found) {
-                    respuestaBot = `✅ Consulta encontrada para ${citaJson.body.nombreCompleto}:\n📅 Fecha: ${citaJson.body.fechaAtencion}`;
-                } else {
-                    respuestaBot = `❌ No encontramos una cita con ese número de documento.`;
-                }
-            }
-
-            // Guardar nuevo mensaje en historial y responder
-            const nuevoHistorial = [
-                ...mensajesHistorial,
-                { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-                { from: "sistema", mensaje: respuestaBot, timestamp: new Date().toISOString() }
-            ];
-
-            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
-            await sendMessage(to, respuestaBot);
-
-            return res.json({ success: true, mensaje: "Respuesta enviada al usuario.", respuesta: respuestaBot });
+            await sendMessage(to, "🧠 Mensaje recibido. Estoy procesando tu solicitud.");
+            return res.json({ success: true, mensaje: "Texto procesado (sin acción PDF)." });
         }
 
-
-        return res.json({ success: true, mensaje: "Mensaje ignorado (no es texto ni imagen procesable)." });
-
+        return res.json({ success: true, mensaje: "Mensaje no procesable." });
     } catch (error) {
-        console.error("Error general en /soporte:", error);
+        console.error("Error en /soporte:", error);
         return res.status(500).json({ success: false, error: error.message });
     }
 });
