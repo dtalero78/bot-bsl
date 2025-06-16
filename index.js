@@ -315,12 +315,14 @@ async function usuarioTieneStopBot(userId) {
         const resp = await fetch(`https://www.bsl.com.co/_functions/obtenerConversacion?userId=${encodeURIComponent(userId)}`);
         if (!resp.ok) return false; // Si no existe el registro, no está bloqueado
         const json = await resp.json();
+        console.log("[usuarioTieneStopBot] json recibido:", json); // <--- AGREGA ESTO
         return json && json.stopBot === true;
     } catch (err) {
         console.error("Error verificando stopBot en Wix:", err);
         return false; // Por defecto deja pasar si hay error
     }
 }
+
 
 
 const PORT = process.env.PORT || 3000;
