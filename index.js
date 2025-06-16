@@ -313,15 +313,29 @@ app.post('/soporte', async (req, res) => {
 async function usuarioTieneStopBot(userId) {
     try {
         const resp = await fetch(`https://www.bsl.com.co/_functions/obtenerConversacion?userId=${encodeURIComponent(userId)}`);
-        if (!resp.ok) return false; // Si no existe el registro, no está bloqueado
-        const json = await resp.json();
-        console.log("[usuarioTieneStopBot] json recibido:", json); // <--- AGREGA ESTO
-        return json && json.stopBot === true;
+        if (!resp.ok) return false;
+
+        let json;
+        try {
+            json = await resp.json();
+        } catch {
+            const text = await resp.text();
+            try {
+                json = JSON.parse(text);
+            } catch (e) {
+                console.error("[usuarioTieneStopBot] Respuesta NO parseable:", text);
+                return false;
+            }
+        }
+
+        console.log("[usuarioTieneStopBot] json recibido:", json);
+        return json && (json.stopBot === true || json.stopBot === "true");
     } catch (err) {
         console.error("Error verificando stopBot en Wix:", err);
-        return false; // Por defecto deja pasar si hay error
+        return false;
     }
 }
+
 
 
 
