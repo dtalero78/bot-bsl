@@ -48,12 +48,18 @@ async function guardarConversacionEnWix({ userId, nombre, mensajes }) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId, nombre, mensajes })
         });
-        const json = await resp.json();
-        console.log("Conversación guardada en Wix:", json);
+        const text = await resp.text(); // 👈
+        try {
+            const json = JSON.parse(text);
+            console.log("Conversación guardada en Wix:", json);
+        } catch (parseError) {
+            console.error("Respuesta de Wix NO es JSON:", text);
+        }
     } catch (err) {
         console.error("Error guardando conversación en Wix:", err);
     }
 }
+
 
 // Función para obtener historial de usuario desde Wix (si quieres mantener historial continuo)
 async function obtenerConversacionDeWix(userId) {
