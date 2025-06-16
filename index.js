@@ -75,10 +75,32 @@ app.post('/soporte', async (req, res) => {
         }
 
         const message = body.messages[0];
-        if (message.from_me === true || message.from === BOT_NUMBER) {
-            console.log("Mensaje enviado por el bot, ignorado.");
-            return res.json({ success: true, mensaje: "Mensaje enviado por el bot, no procesado." });
+       if (message.from_me === true || message.from === BOT_NUMBER) {
+    const bodyText = message.text?.body || "";
+
+    if (bodyText === "...transfiriendo con asesor") {
+        const chatId = message.chat_id?.split("@")[0] || message.from;
+        console.log(`🛑 Bot desactivado manualmente por mensaje especial "${bodyText}" para ${chatId}`);
+
+        // Actualizar campo observaciones a "stop"
+        try {
+            await fetch('https://www.bsl.com.co/_functions/guardarObservacion', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: chatId,
+                    observaciones: "stop"
+                })
+            });
+        } catch (err) {
+            console.error("❌ Error actualizando observaciones:", err);
         }
+    }
+
+    console.log("Mensaje enviado por el bot, ignorado.");
+    return res.json({ success: true, mensaje: "Mensaje enviado por el bot, no procesado." });
+}
+
 
         const from = message.from;
         const nombre = message.from_name || "Nombre desconocido";
@@ -92,10 +114,8 @@ console.log(`[WIX] Consulta previa | userId: ${from} | observaciones: ${observac
 
 if (String(observaciones).toLowerCase().includes("stop")) {
     console.log(`[STOP] Usuario bloqueado por observaciones: ${from}`);
-    await sendMessage(to, "Hemos pausado esta conversación. Si necesitas reactivarla, comunícate con un asesor.");
-    return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones." });
+    return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones (silencioso)." });
 }
-
 
 
 
