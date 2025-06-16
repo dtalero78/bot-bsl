@@ -193,6 +193,7 @@ if (message.from === BOT_NUMBER) {
                 mensaje: `Hemos recibido tu comprobante. Valor detectado: $${resultado}`,
                 timestamp: new Date().toISOString()
             });
+console.log("Historial que voy a guardar:", JSON.stringify(mensajesHistorial, null, 2));
 
             await guardarConversacionEnWix({
                 userId: from,
@@ -264,6 +265,7 @@ if (message.from === BOT_NUMBER) {
                 mensaje: respuestaBot,
                 timestamp: new Date().toISOString()
             });
+console.log("Historial que voy a guardar:", JSON.stringify(mensajesHistorial, null, 2));
 
             await guardarConversacionEnWix({
                 userId: from,
