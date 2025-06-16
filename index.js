@@ -283,6 +283,8 @@ app.post('/soporte', async (req, res) => {
 
     const response = await fetch(`https://www.bsl.com.co/_functions/busquedaCita?numeroId=${numeroId}`);
     const text = await response.text();
+    console.log("🧾 Respuesta raw de Wix de cita:", text);
+
 
     let data;
     try {
