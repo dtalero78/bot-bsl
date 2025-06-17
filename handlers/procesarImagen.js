@@ -74,14 +74,13 @@ async function procesarImagen(message, res) {
     await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
     await sendMessage(to, `Hemos recibido tu comprobante. Valor detectado: $${resultado}`);
 
-    // Preguntar por número de documento
-    await sendMessage(to, "Por favor, responde con tu número de documento para generar el certificado en PDF.");
+    // ✅ Preguntar por el número de documento para generar el PDF luego
+    await sendMessage(to, "¿Cuál es tu número de documento para generar tu certificado PDF?");
 
     return res.json({
         success: true,
-        mensaje: "Valor detectado y solicitud de número de documento enviada.",
-        valorDetectado: resultado,
-        esperaDocumento: true
+        mensaje: "Valor detectado y solicitud de documento enviada.",
+        valorDetectado: resultado
     });
 }
 
