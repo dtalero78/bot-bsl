@@ -31,7 +31,7 @@ async function manejarControlBot(message) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: message.chat_id.split("@")[0],
-                    observaciones: ""
+                    observaciones: " "
                 })
             });
         }
