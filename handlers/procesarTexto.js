@@ -13,16 +13,20 @@ async function procesarTexto(message, res) {
     const userMessage = message.text.body.trim();
     const esNumeroId = /^\d{7,10}$/.test(userMessage);
 
-    const { mensajes: mensajesHistorial = [], observaciones = "" } = await obtenerConversacionDeWix(from);
-    console.log(`[WIX] Consulta previa | userId: ${from} | observaciones: ${observaciones}`);
+    const conversacion = await obtenerConversacionDeWix(from);
+    const mensajesHistorial = conversacion.mensajes || [];
+    const observaciones = conversacion.observaciones || "";
+    const proximaAccion = conversacion.proximaAccion || "";
+
+    console.log(`[WIX] Consulta previa | userId: ${from} | observaciones: ${observaciones} | proximaAccion: ${proximaAccion}`);
 
     if (String(observaciones).toLowerCase().includes("stop")) {
         console.log(`[STOP] Usuario bloqueado por observaciones: ${from}`);
         return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones (silencioso)." });
     }
 
-    // Si el usuario envía su número de documento, generar y enviar el PDF
-    if (esNumeroId) {
+    // Si hay una acción pendiente de enviar PDF y el usuario escribe un número
+    if (proximaAccion === "enviar_pdf" && esNumeroId) {
         try {
             const pdfUrl = await generarPdfDesdeApi2Pdf(userMessage);
             await sendPdf(to, pdfUrl);
@@ -30,12 +34,17 @@ async function procesarTexto(message, res) {
             const nuevoHistorial = [
                 ...mensajesHistorial,
                 { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-                { from: "sistema", mensaje: "PDF generado y enviado correctamente.", timestamp: new Date().toISOString() }
+                { from: "sistema", mensaje: "Aquí tienes tu certificado médico en PDF.", timestamp: new Date().toISOString() }
             ];
 
-            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+            await guardarConversacionEnWix({
+                userId: from,
+                nombre,
+                mensajes: nuevoHistorial,
+                proximaAccion: null  // Limpiar intención
+            });
 
-            return res.json({ success: true, mensaje: "PDF generado y enviado." });
+            return res.json({ success: true, mensaje: "PDF enviado correctamente." });
         } catch (err) {
             console.error("Error generando o enviando PDF:", err);
             await sendMessage(to, "Ocurrió un error al generar tu certificado. Intenta más tarde.");
@@ -43,7 +52,7 @@ async function procesarTexto(message, res) {
         }
     }
 
-    // Chat con OpenAI
+    // Chat normal con OpenAI
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: 'POST',
         headers: {
@@ -72,14 +81,19 @@ async function procesarTexto(message, res) {
         respuestaBot = `Error OpenAI: ${openaiJson.error.message}`;
     }
 
-    // Guardar historial y enviar respuesta
     const nuevoHistorial = [
         ...mensajesHistorial,
         { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
         { from: "sistema", mensaje: respuestaBot, timestamp: new Date().toISOString() }
     ];
 
-    await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+    await guardarConversacionEnWix({
+        userId: from,
+        nombre,
+        mensajes: nuevoHistorial
+        // no se modifica proximaAccion aquí
+    });
+
     await sendMessage(to, respuestaBot);
 
     return res.json({ success: true, mensaje: "Respuesta enviada al usuario.", respuesta: respuestaBot });
