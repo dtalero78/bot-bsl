@@ -14,7 +14,7 @@ async function procesarImagen(message, res) {
     const urlImg = `https://gate.whapi.cloud/media/${imageId}`;
 
     // Esperar 3 segundos para asegurar que la imagen esté disponible
-    await new Promise(resolve => setTimeout(resolve, 3000));
+await new Promise(resolve => setTimeout(resolve, 6000));
 
     const whapiRes = await fetch(urlImg, {
         method: 'GET',
