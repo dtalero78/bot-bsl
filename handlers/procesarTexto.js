@@ -3,6 +3,7 @@ const { promptInstitucional } = require('../utils/prompt');
 const { sendMessage } = require('../utils/sendMessage');
 const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('../utils/wixAPI');
 const { generarPdfDesdeApi2Pdf, sendPdf } = require('../utils/pdf');
+const { consultarInformacionPaciente } = require('../utils/consultarPaciente');
 
 async function procesarTexto(message, res) {
     const from = message.from;
@@ -21,8 +22,48 @@ async function procesarTexto(message, res) {
         return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones (silencioso)." });
     }
 
-    // Si el usuario envía su número de documento, generar y enviar el PDF
+    // Detectar si envió número de documento
     if (esNumeroId) {
+        const ultimoMensaje = mensajesHistorial[mensajesHistorial.length - 1]?.mensaje || "";
+
+        const pidioConsulta = ultimoMensaje.toLowerCase().includes("consulta") ||
+                              ultimoMensaje.toLowerCase().includes("cita") ||
+                              ultimoMensaje.toLowerCase().includes("médico") ||
+                              ultimoMensaje.toLowerCase().includes("atención");
+
+        if (pidioConsulta) {
+            try {
+                const info = await consultarInformacionPaciente(userMessage);
+
+                if (!info || info.length === 0) {
+                    await sendMessage(to, "No encontré información médica con ese documento.");
+                } else {
+                    const datos = info[0];
+                    const resumen = `📄 Información registrada:
+👤 ${datos.primerNombre} ${datos.primerApellido}
+📅 Fecha atención: ${datos.fechaAtencion ? datos.fechaAtencion.split("T")[0] : "No registrada"}
+📲 Celular: ${datos.celular || "No disponible"}`;
+
+                    await sendMessage(to, resumen);
+                }
+
+                const nuevoHistorial = [
+                    ...mensajesHistorial,
+                    { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+                    { from: "sistema", mensaje: "Consulta médica enviada.", timestamp: new Date().toISOString() }
+                ];
+
+                await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+                return res.json({ success: true, mensaje: "Consulta enviada." });
+
+            } catch (err) {
+                console.error("❌ Error en consulta paciente:", err);
+                await sendMessage(to, "Ocurrió un error consultando la información. Intenta más tarde.");
+                return res.status(500).json({ success: false, error: err.message });
+            }
+        }
+
+        // Si no pidió consulta, se asume que quiere el PDF
         try {
             const pdfUrl = await generarPdfDesdeApi2Pdf(userMessage);
             await sendPdf(to, pdfUrl);
@@ -72,7 +113,27 @@ async function procesarTexto(message, res) {
         respuestaBot = `Error OpenAI: ${openaiJson.error.message}`;
     }
 
-    // Guardar historial y enviar respuesta
+    // Si el modelo detecta que está preguntando por su consulta
+    if (
+        respuestaBot.toLowerCase().includes("parece que estás preguntando por tu consulta") ||
+        userMessage.toLowerCase().includes("cita") ||
+        userMessage.toLowerCase().includes("consulta") ||
+        userMessage.toLowerCase().includes("médico") ||
+        userMessage.toLowerCase().includes("atención")
+    ) {
+        await sendMessage(to, "Para ayudarte mejor, por favor dime tu número de documento.");
+
+        const nuevoHistorial = [
+            ...mensajesHistorial,
+            { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+            { from: "sistema", mensaje: "Se solicitó el número de documento para consulta médica", timestamp: new Date().toISOString() }
+        ];
+
+        await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+        return res.json({ success: true, mensaje: "Solicitado documento para consulta médica." });
+    }
+
+    // Guardar y responder normalmente
     const nuevoHistorial = [
         ...mensajesHistorial,
         { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
