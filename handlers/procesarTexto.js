@@ -152,16 +152,27 @@ async function procesarTexto(message, res) {
 
 
     // Guardar y responder normalmente
-    const nuevoHistorial = [
+    const nuevoHistorial = limpiarDuplicados([
         ...mensajesHistorial,
         { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
         { from: "sistema", mensaje: respuestaBot, timestamp: new Date().toISOString() }
-    ];
+    ]);
 
     await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
     await sendMessage(to, respuestaBot);
 
     return res.json({ success: true, mensaje: "Respuesta enviada al usuario.", respuesta: respuestaBot });
+}
+
+// Función para limpiar duplicados por mensaje y timestamp
+function limpiarDuplicados(historial) {
+    const vistos = new Set();
+    return historial.filter(m => {
+        const clave = `${m.from}|${m.mensaje}|${m.timestamp}`;
+        if (vistos.has(clave)) return false;
+        vistos.add(clave);
+        return true;
+    });
 }
 
 module.exports = { procesarTexto };
