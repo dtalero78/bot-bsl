@@ -9,28 +9,26 @@ const API2PDF_KEY = process.env.API2PDF_KEY;
  * @param {string} pdfUrl - URL directa del PDF generado
  */
 async function sendPdf(to, pdfUrl) {
-    const url = "https://gate.whapi.cloud/messages/document";
-    const body = {
-        to: to,
-        media: {
-            url: pdfUrl,
-            caption: "Aquí tienes tu certificado médico en PDF."
-        }
-    };
+  const url = "https://gate.whapi.cloud/messages/document";
+  const body = {
+    to: to,
+    media: pdfUrl, // ✅ debe ser string directo, no objeto
+    caption: "Aquí tienes tu certificado médico en PDF."
+  };
 
-    const resp = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${WHAPI_KEY}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
-    });
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.WHAPI_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
 
-    const json = await resp.json();
-    console.log("Respuesta Whapi (PDF):", JSON.stringify(json, null, 2));
-    return json;
+  const json = await resp.json();
+  console.log("Respuesta Whapi (PDF):", JSON.stringify(json, null, 2));
 }
+
 
 /**
  * Genera un PDF a partir de una URL usando API2PDF
