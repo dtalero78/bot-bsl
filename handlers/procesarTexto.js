@@ -150,25 +150,6 @@ async function procesarTexto(message, res) {
         respuestaBot = `Error OpenAI: ${openaiJson.error.message}`;
     }
 
-    // Si el modelo detecta que está preguntando por su consulta
-    if (
-        respuestaBot.toLowerCase().includes("parece que estás preguntando por tu consulta") ||
-        userMessage.toLowerCase().includes("cita") ||
-        userMessage.toLowerCase().includes("consulta") ||
-        userMessage.toLowerCase().includes("médico") ||
-        userMessage.toLowerCase().includes("atención")
-    ) {
-        await sendMessage(to, "¿Cual es tu número de documento?");
-
-        const nuevoHistorial = [
-            ...mensajesHistorial,
-            { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-            { from: "sistema", mensaje: "Se solicitó el número de documento para consulta médica", timestamp: new Date().toISOString() }
-        ];
-
-        await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
-        return res.json({ success: true, mensaje: "Solicitado documento para consulta médica." });
-    }
 
     // Guardar y responder normalmente
     const nuevoHistorial = [
