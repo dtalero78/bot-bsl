@@ -24,95 +24,83 @@ async function procesarTexto(message, res) {
 
     // Detectar si envió número de documento
     if (esNumeroId) {
-        const ultimoMensaje = mensajesHistorial[mensajesHistorial.length - 1]?.mensaje || "";
+    const ultimoMensaje = mensajesHistorial[mensajesHistorial.length - 1]?.mensaje || "";
 
-        const pidioConsulta = ultimoMensaje.toLowerCase().includes("consulta") ||
-            ultimoMensaje.toLowerCase().includes("cita") ||
-            ultimoMensaje.toLowerCase().includes("médico") ||
-            ultimoMensaje.toLowerCase().includes("atención");
+    const pidioConsulta = ultimoMensaje.toLowerCase().includes("consulta") ||
+        ultimoMensaje.toLowerCase().includes("cita") ||
+        ultimoMensaje.toLowerCase().includes("médico") ||
+        ultimoMensaje.toLowerCase().includes("atención");
 
-        // 🔔 Mensaje previo
-        await sendMessage(to, "🔍 Un momento por favor, estamos consultando tu información...");
+    // 🔔 Mensaje previo común
+    await sendMessage(to, "🔍 Un momento por favor...");
 
-        if (esNumeroId) {
-            const ultimoMensaje = mensajesHistorial[mensajesHistorial.length - 1]?.mensaje || "";
+    if (pidioConsulta) {
+        try {
+            const info = await consultarInformacionPaciente(userMessage);
 
-            const pidioConsulta = ultimoMensaje.toLowerCase().includes("consulta") ||
-                ultimoMensaje.toLowerCase().includes("cita") ||
-                ultimoMensaje.toLowerCase().includes("médico") ||
-                ultimoMensaje.toLowerCase().includes("atención");
+            if (!info || info.length === 0) {
+                await sendMessage(to, "No encontré información médica con ese documento.");
+            } else {
+                const datos = info[0];
+                const opcionesFecha = {
+                    timeZone: "America/Bogota",
+                    day: "2-digit",
+                    month: "long",
+                    year: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                    hour12: true
+                };
 
-            // 🔔 Mensaje previo común
-            await sendMessage(to, "🔍 Un momento por favor, estamos consultando tu información...");
+                const fechaAtencionFormateada = datos.fechaAtencion
+                    ? new Date(datos.fechaAtencion).toLocaleString("es-CO", opcionesFecha)
+                    : "No registrada";
 
-            if (pidioConsulta) {
-                try {
-                    const info = await consultarInformacionPaciente(userMessage);
-
-                    if (!info || info.length === 0) {
-                        await sendMessage(to, "No encontré información médica con ese documento.");
-                    } else {
-                        const datos = info[0];
-                        const opcionesFecha = {
-                            timeZone: "America/Bogota",
-                            day: "2-digit",
-                            month: "long",
-                            year: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                            hour12: true
-                        };
-
-                        const fechaAtencionFormateada = datos.fechaAtencion
-                            ? new Date(datos.fechaAtencion).toLocaleString("es-CO", opcionesFecha)
-                            : "No registrada";
-
-                        const resumen = `📄 Información registrada:
+                const resumen = `📄 Información registrada:
 👤 ${datos.primerNombre} ${datos.primerApellido}
 📅 Fecha consulta: ${fechaAtencionFormateada.replace(',', ' a las')}
 📲 Celular: ${datos.celular || "No disponible"}`;
 
-                        await sendMessage(to, resumen);
-                    }
-
-                    const nuevoHistorial = [
-                        ...mensajesHistorial,
-                        { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-                        { from: "sistema", mensaje: "Consulta médica enviada.", timestamp: new Date().toISOString() }
-                    ];
-
-                    await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
-                    return res.json({ success: true, mensaje: "Consulta enviada." });
-
-                } catch (err) {
-                    console.error("❌ Error en consulta paciente:", err);
-                    await sendMessage(to, "Ocurrió un error consultando la información. Intenta más tarde.");
-                    return res.status(500).json({ success: false, error: err.message });
-                }
-            } else {
-                // 🧾 Generación del PDF
-                try {
-                    const pdfUrl = await generarPdfDesdeApi2Pdf(userMessage);
-                    await sendPdf(to, pdfUrl);
-
-                    const nuevoHistorial = [
-                        ...mensajesHistorial,
-                        { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-                        { from: "sistema", mensaje: "PDF generado y enviado correctamente.", timestamp: new Date().toISOString() }
-                    ];
-
-                    await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
-                    return res.json({ success: true, mensaje: "PDF generado y enviado." });
-
-                } catch (err) {
-                    console.error("Error generando o enviando PDF:", err);
-                    await sendMessage(to, "Ocurrió un error al generar tu certificado. Intenta más tarde.");
-                    return res.status(500).json({ success: false, error: err.message });
-                }
+                await sendMessage(to, resumen);
             }
-        }
 
+            const nuevoHistorial = [
+                ...mensajesHistorial,
+                { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+                { from: "sistema", mensaje: "Consulta médica enviada.", timestamp: new Date().toISOString() }
+            ];
+
+            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+            return res.json({ success: true, mensaje: "Consulta enviada." });
+
+        } catch (err) {
+            console.error("❌ Error en consulta paciente:", err);
+            await sendMessage(to, "Ocurrió un error consultando la información. Intenta más tarde.");
+            return res.status(500).json({ success: false, error: err.message });
+        }
+    } else {
+        // 🧾 Generación del PDF
+        try {
+            const pdfUrl = await generarPdfDesdeApi2Pdf(userMessage);
+            await sendPdf(to, pdfUrl);
+
+            const nuevoHistorial = [
+                ...mensajesHistorial,
+                { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+                { from: "sistema", mensaje: "PDF generado y enviado correctamente.", timestamp: new Date().toISOString() }
+            ];
+
+            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+            return res.json({ success: true, mensaje: "PDF generado y enviado." });
+
+        } catch (err) {
+            console.error("Error generando o enviando PDF:", err);
+            await sendMessage(to, "Ocurrió un error al generar tu certificado. Intenta más tarde.");
+            return res.status(500).json({ success: false, error: err.message });
+        }
     }
+}
+
 
     // Chat con OpenAI
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -151,7 +139,7 @@ async function procesarTexto(message, res) {
         userMessage.toLowerCase().includes("médico") ||
         userMessage.toLowerCase().includes("atención")
     ) {
-        await sendMessage(to, "Para ayudarte mejor, por favor dime tu número de documento.");
+        await sendMessage(to, "¿Cual es tu número de documento?");
 
         const nuevoHistorial = [
             ...mensajesHistorial,

@@ -13,6 +13,8 @@ async function procesarImagen(message, res) {
     const mimeType = message.image?.mime_type || "image/jpeg";
     const urlImg = `https://gate.whapi.cloud/media/${imageId}`;
 
+        await sendMessage(to, "🔍 Un momento por favor...");
+
     // Esperar 3 segundos para asegurar que la imagen esté disponible
 await new Promise(resolve => setTimeout(resolve, 6000));
 
