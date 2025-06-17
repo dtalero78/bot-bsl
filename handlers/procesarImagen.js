@@ -71,12 +71,7 @@ async function procesarImagen(message, res) {
         { from: "sistema", mensaje: `Hemos recibido tu comprobante. Valor detectado: $${resultado}`, timestamp: new Date().toISOString() }
     ];
 
-    await guardarConversacionEnWix({
-        userId: from,
-        nombre,
-        mensajes: nuevoHistorial,
-        proximaAccion: "enviar_pdf"
-    });
+    await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
     await sendMessage(to, `Hemos recibido tu comprobante. Valor detectado: $${resultado}`);
 
     // ✅ Preguntar por el número de documento para generar el PDF luego
