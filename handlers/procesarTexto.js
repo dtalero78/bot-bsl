@@ -27,9 +27,9 @@ async function procesarTexto(message, res) {
         const ultimoMensaje = mensajesHistorial[mensajesHistorial.length - 1]?.mensaje || "";
 
         const pidioConsulta = ultimoMensaje.toLowerCase().includes("consulta") ||
-                              ultimoMensaje.toLowerCase().includes("cita") ||
-                              ultimoMensaje.toLowerCase().includes("médico") ||
-                              ultimoMensaje.toLowerCase().includes("atención");
+            ultimoMensaje.toLowerCase().includes("cita") ||
+            ultimoMensaje.toLowerCase().includes("médico") ||
+            ultimoMensaje.toLowerCase().includes("atención");
 
         if (pidioConsulta) {
             try {
@@ -39,10 +39,25 @@ async function procesarTexto(message, res) {
                     await sendMessage(to, "No encontré información médica con ese documento.");
                 } else {
                     const datos = info[0];
+                    const opcionesFecha = {
+                        timeZone: "America/Bogota",
+                        day: "2-digit",
+                        month: "long",
+                        year: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                        hour12: true
+                    };
+
+                    const fechaAtencionFormateada = datos.fechaAtencion
+                        ? new Date(datos.fechaAtencion).toLocaleString("es-CO", opcionesFecha)
+                        : "No registrada";
+
                     const resumen = `📄 Información registrada:
 👤 ${datos.primerNombre} ${datos.primerApellido}
-📅 Fecha atención: ${datos.fechaAtencion ? datos.fechaAtencion.split("T")[0] : "No registrada"}
+📅 Fecha consulta: ${fechaAtencionFormateada}
 📲 Celular: ${datos.celular || "No disponible"}`;
+
 
                     await sendMessage(to, resumen);
                 }
