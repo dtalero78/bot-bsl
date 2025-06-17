@@ -9,14 +9,21 @@ async function procesarImagen(message, res) {
     const chatId = message.chat_id;
     const to = chatId || `${from}@s.whatsapp.net`;
 
+    // ✅ Verificación de stopBot
+    const { observaciones = "" } = await obtenerConversacionDeWix(from);
+    if (String(observaciones).toLowerCase().includes("stop")) {
+        console.log(`[STOP] Usuario bloqueado por observaciones: ${from}`);
+        return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones (silencioso)." });
+    }
+
     const imageId = message.image?.id;
     const mimeType = message.image?.mime_type || "image/jpeg";
     const urlImg = `https://gate.whapi.cloud/media/${imageId}`;
 
-        await sendMessage(to, "🔍 Un momento por favor...");
+    await sendMessage(to, "🔍 Un momento por favor...");
 
-    // Esperar 3 segundos para asegurar que la imagen esté disponible
-await new Promise(resolve => setTimeout(resolve, 6000));
+    // Esperar 6 segundos para asegurar que la imagen esté disponible
+    await new Promise(resolve => setTimeout(resolve, 6000));
 
     const whapiRes = await fetch(urlImg, {
         method: 'GET',
@@ -31,8 +38,6 @@ await new Promise(resolve => setTimeout(resolve, 6000));
 
     const buffer = await whapiRes.buffer();
     const base64Image = buffer.toString('base64');
-    console.log("Tamaño base64:", base64Image.length);
-    console.log("Primeros 40 chars base64:", base64Image.substring(0, 40));
 
     const prompt = "Extrae SOLO el valor pagado (valor de la transferencia en pesos colombianos) que aparece en este comprobante bancario. Responde solo el valor exacto, sin explicaciones, ni símbolos adicionales.";
 
@@ -75,8 +80,6 @@ await new Promise(resolve => setTimeout(resolve, 6000));
 
     await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
     await sendMessage(to, `Hemos recibido tu comprobante. Valor detectado: $${resultado}`);
-
-    // ✅ Preguntar por el número de documento para generar el PDF luego
     await sendMessage(to, "¿Cuál es tu número de documento para generar tu certificado PDF?");
 
     return res.json({
