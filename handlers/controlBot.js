@@ -40,7 +40,6 @@ async function manejarControlBot(message) {
         // ✅ Reactivar bot
         if (bodyText === "...te dejo con el bot 🤖") {
             console.log(`✅ Bot reactivado para ${chatId}`);
-            await sendMessage(to, "Puedes continuar con el bot 🤖");
             await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
