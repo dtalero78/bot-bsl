@@ -1,6 +1,7 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const { sendMessage } = require('../utils/sendMessage');
 const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('../utils/wixAPI');
+const { generarPdfDesdeApi2Pdf, sendPdf } = require('../utils/pdf');
 
 async function procesarImagen(message, res) {
     const from = message.from;
@@ -73,7 +74,15 @@ async function procesarImagen(message, res) {
     await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
     await sendMessage(to, `Hemos recibido tu comprobante. Valor detectado: $${resultado}`);
 
-    return res.json({ success: true, mensaje: "Valor detectado en el comprobante", valorDetectado: resultado });
+    // Preguntar por número de documento
+    await sendMessage(to, "Por favor, responde con tu número de documento para generar el certificado en PDF.");
+
+    return res.json({
+        success: true,
+        mensaje: "Valor detectado y solicitud de número de documento enviada.",
+        valorDetectado: resultado,
+        esperaDocumento: true
+    });
 }
 
 module.exports = { procesarImagen };
