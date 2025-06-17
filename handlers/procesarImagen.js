@@ -12,6 +12,7 @@ async function procesarImagen(message, res) {
     const mimeType = message.image?.mime_type || "image/jpeg";
     const urlImg = `https://gate.whapi.cloud/media/${imageId}`;
 
+    await new Promise(resolve => setTimeout(resolve, 2000));
     const whapiRes = await fetch(urlImg, {
         method: 'GET',
         headers: { "Authorization": `Bearer ${process.env.WHAPI_KEY}` }
