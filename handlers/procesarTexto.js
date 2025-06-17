@@ -153,7 +153,7 @@ async function procesarTexto(message, res) {
 
 
     // Guardar y responder normalmente
-    const nuevoHistorial = limpiarDuplicados([
+    const nuevoHistorial = [
         ...mensajesHistorial,
         { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
         { from: "sistema", mensaje: respuestaBot, timestamp: new Date().toISOString() }
@@ -165,11 +165,11 @@ async function procesarTexto(message, res) {
     return res.json({ success: true, mensaje: "Respuesta enviada al usuario.", respuesta: respuestaBot });
 }
 
-// Función para limpiar duplicados por mensaje y timestamp
+// Función para limpiar duplicados por origen y mensaje
 function limpiarDuplicados(historial) {
     const vistos = new Set();
     return historial.filter(m => {
-        const clave = `${m.from}|${m.mensaje}|${m.timestamp}`;
+        const clave = `${m.from}|${m.mensaje}`;
         if (vistos.has(clave)) return false;
         vistos.add(clave);
         return true;
