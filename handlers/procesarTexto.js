@@ -17,6 +17,7 @@ async function procesarTexto(message, res) {
     const esNumeroId = /^\d{7,10}$/.test(userMessage);
 
     const { mensajes: mensajesHistorial = [], observaciones = "" } = await obtenerConversacionDeWix(from);
+    const mensajesHistorialLimpio = limpiarDuplicados(mensajesHistorial);
     console.log(`[WIX] Consulta previa | userId: ${from} | observaciones: ${observaciones}`);
 
     if (String(observaciones).toLowerCase().includes("stop")) {
@@ -26,7 +27,7 @@ async function procesarTexto(message, res) {
 
     // Detectar si envió número de documento
     if (esNumeroId) {
-        const ultimoMensaje = mensajesHistorial[mensajesHistorial.length - 1]?.mensaje || "";
+        const ultimoMensaje = mensajesHistorialLimpio[mensajesHistorialLimpio.length - 1]?.mensaje || "";
 
         const pidioConsulta = ultimoMensaje.toLowerCase().includes("consulta") ||
             ultimoMensaje.toLowerCase().includes("cita") ||
@@ -66,11 +67,11 @@ async function procesarTexto(message, res) {
                     await sendMessage(to, resumen);
                 }
 
-                const nuevoHistorial = [
-                    ...mensajesHistorial,
+                const nuevoHistorial = limpiarDuplicados([
+                    ...mensajesHistorialLimpio,
                     { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
                     { from: "sistema", mensaje: "Consulta médica enviada.", timestamp: new Date().toISOString() }
-                ];
+                ]);
 
                 await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
                 return res.json({ success: true, mensaje: "Consulta enviada." });
@@ -87,11 +88,11 @@ async function procesarTexto(message, res) {
                 console.error("❌ No se pudo marcar como Pagado:", respuestaMarcado);
                 await sendMessage(to, "No pudimos registrar tu pago. Intenta más tarde o contacta soporte.");
 
-                const nuevoHistorialError = [
-                    ...mensajesHistorial,
+                const nuevoHistorialError = limpiarDuplicados([
+                    ...mensajesHistorialLimpio,
                     { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
                     { from: "sistema", mensaje: "Error marcando como pagado.", timestamp: new Date().toISOString() }
-                ];
+                ]);
 
                 await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorialError });
 
@@ -103,11 +104,11 @@ async function procesarTexto(message, res) {
                 const pdfUrl = await generarPdfDesdeApi2Pdf(userMessage);
                 await sendPdf(to, pdfUrl);
 
-                const nuevoHistorial = [
-                    ...mensajesHistorial,
+                const nuevoHistorial = limpiarDuplicados([
+                    ...mensajesHistorialLimpio,
                     { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
                     { from: "sistema", mensaje: "PDF generado y enviado correctamente.", timestamp: new Date().toISOString() }
-                ];
+                ]);
 
                 await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
                 return res.json({ success: true, mensaje: "PDF generado y enviado." });
@@ -132,7 +133,7 @@ async function procesarTexto(message, res) {
             model: 'gpt-4o',
             messages: [
                 { role: 'system', content: promptInstitucional },
-                ...mensajesHistorial.map(m => ({
+                ...mensajesHistorialLimpio.map(m => ({
                     role: m.from === "usuario" ? "user" : "assistant",
                     content: m.mensaje
                 })),
@@ -153,7 +154,7 @@ async function procesarTexto(message, res) {
 
     // Guardar y responder normalmente
     const nuevoHistorial = limpiarDuplicados([
-        ...mensajesHistorial,
+        ...mensajesHistorialLimpio,
         { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
         { from: "sistema", mensaje: respuestaBot, timestamp: new Date().toISOString() }
     ]);
@@ -164,11 +165,11 @@ async function procesarTexto(message, res) {
     return res.json({ success: true, mensaje: "Respuesta enviada al usuario.", respuesta: respuestaBot });
 }
 
-// Función para limpiar duplicados por mensaje y timestamp
+// Función para limpiar duplicados por origen y mensaje
 function limpiarDuplicados(historial) {
     const vistos = new Set();
     return historial.filter(m => {
-        const clave = `${m.from}|${m.mensaje}|${m.timestamp}`;
+        const clave = `${m.from}|${m.mensaje}`;
         if (vistos.has(clave)) return false;
         vistos.add(clave);
         return true;
