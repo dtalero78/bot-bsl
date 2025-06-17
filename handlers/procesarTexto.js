@@ -2,6 +2,7 @@ const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fet
 const { promptInstitucional } = require('../utils/prompt');
 const { sendMessage } = require('../utils/sendMessage');
 const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('../utils/wixAPI');
+const { generarPdfDesdeApi2Pdf, sendPdf } = require('../utils/pdf');
 
 async function procesarTexto(message, res) {
     const from = message.from;
@@ -18,6 +19,28 @@ async function procesarTexto(message, res) {
     if (String(observaciones).toLowerCase().includes("stop")) {
         console.log(`[STOP] Usuario bloqueado por observaciones: ${from}`);
         return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones (silencioso)." });
+    }
+
+    // Si el usuario envía su número de documento, generar y enviar el PDF
+    if (esNumeroId) {
+        try {
+            const pdfUrl = await generarPdfDesdeApi2Pdf(userMessage);
+            await sendPdf(to, pdfUrl);
+
+            const nuevoHistorial = [
+                ...mensajesHistorial,
+                { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+                { from: "sistema", mensaje: "PDF generado y enviado correctamente.", timestamp: new Date().toISOString() }
+            ];
+
+            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+
+            return res.json({ success: true, mensaje: "PDF generado y enviado." });
+        } catch (err) {
+            console.error("Error generando o enviando PDF:", err);
+            await sendMessage(to, "Ocurrió un error al generar tu certificado. Intenta más tarde.");
+            return res.status(500).json({ success: false, error: err.message });
+        }
     }
 
     // Chat con OpenAI
