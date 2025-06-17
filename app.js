@@ -37,27 +37,6 @@ app.post('/soporte', async (req, res) => {
     }
 });
 
-app.get('/verificar-media/:id', async (req, res) => {
-    const mediaId = req.params.id;
-    const url = `https://gate.whapi.cloud/media/${mediaId}`;
-    const token = process.env.WHAPI_KEY;
-
-    try {
-        const r = await fetch(url, {
-            method: 'GET',
-            headers: { Authorization: `Bearer ${token}` }
-        });
-
-        if (!r.ok) {
-            const error = await r.text();
-            return res.status(r.status).send("❌ No disponible aún: " + error);
-        }
-
-        return res.status(200).send("✅ ¡La imagen está disponible y lista para descargar!");
-    } catch (e) {
-        res.status(500).send("🛑 Error al consultar la imagen: " + e.message);
-    }
-});
 
 
 const PORT = process.env.PORT || 3000;

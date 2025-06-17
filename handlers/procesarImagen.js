@@ -12,7 +12,9 @@ async function procesarImagen(message, res) {
     const mimeType = message.image?.mime_type || "image/jpeg";
     const urlImg = `https://gate.whapi.cloud/media/${imageId}`;
 
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Esperar 3 segundos para asegurar que la imagen esté disponible
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
     const whapiRes = await fetch(urlImg, {
         method: 'GET',
         headers: { "Authorization": `Bearer ${process.env.WHAPI_KEY}` }
@@ -26,8 +28,11 @@ async function procesarImagen(message, res) {
 
     const buffer = await whapiRes.buffer();
     const base64Image = buffer.toString('base64');
+    console.log("Tamaño base64:", base64Image.length);
+    console.log("Primeros 40 chars base64:", base64Image.substring(0, 40));
 
-    const prompt = "Extrae SOLO el valor pagado (valor de la transferencia en pesos colombianos)...";
+    const prompt = "Extrae SOLO el valor pagado (valor de la transferencia en pesos colombianos) que aparece en este comprobante bancario. Responde solo el valor exacto, sin explicaciones, ni símbolos adicionales.";
+
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: 'POST',
         headers: {
@@ -48,6 +53,8 @@ async function procesarImagen(message, res) {
     });
 
     const openaiJson = await aiRes.json();
+    console.log("Respuesta cruda de OpenAI:", JSON.stringify(openaiJson, null, 2));
+
     let resultado = "No se obtuvo respuesta de OpenAI.";
     if (openaiJson.choices?.[0]?.message) {
         resultado = openaiJson.choices[0].message.content;
