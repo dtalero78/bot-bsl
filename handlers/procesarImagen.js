@@ -1,51 +1,72 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+const { promptInstitucional } = require('../utils/prompt');
 const { sendMessage } = require('../utils/sendMessage');
 const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('../utils/wixAPI');
+const { consultarInformacionPaciente } = require('../utils/consultarPaciente');
 
-async function procesarImagen(message, res) {
+async function procesarTexto(message, res) {
     const from = message.from;
     const nombre = message.from_name || "Nombre desconocido";
     const chatId = message.chat_id;
     const to = chatId || `${from}@s.whatsapp.net`;
+    const userMessage = message.text.body.trim();
+    const esNumeroId = /^\d{7,10}$/.test(userMessage);
 
-    // ✅ Ignorar si la imagen fue enviada por el admin o el bot
-    const BOT_NUMBER = "573008021701";
-    if (message.from_me === true || message.from === BOT_NUMBER) {
-        console.log("📷 Imagen ignorada: fue enviada por el admin o el bot.");
-        return res.json({ success: true, mensaje: "Imagen del admin ignorada." });
-    }
+    const { mensajes: mensajesHistorial = [], observaciones = "" } = await obtenerConversacionDeWix(from);
+    const mensajesHistorialLimpio = limpiarDuplicados(mensajesHistorial);
+    console.log(`[WIX] Consulta previa | userId: ${from} | observaciones: ${observaciones}`);
 
-    // ✅ Verificación de observaciones para STOP
-    const { observaciones = "" } = await obtenerConversacionDeWix(from);
     if (String(observaciones).toLowerCase().includes("stop")) {
         console.log(`[STOP] Usuario bloqueado por observaciones: ${from}`);
         return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones (silencioso)." });
     }
 
-    const imageId = message.image?.id;
-    const mimeType = message.image?.mime_type || "image/jpeg";
-    const urlImg = `https://gate.whapi.cloud/media/${imageId}`;
+    // Detectar si envió número de documento
+    if (esNumeroId) {
+        const haEnviadoSoporte = mensajesHistorialLimpio.some(m => m.mensaje.includes("Valor detectado"));
 
-    await sendMessage(to, "🔍 Un momento por favor...");
+        if (!haEnviadoSoporte) {
+            await enviarMensajeYGuardar({
+                to,
+                userId: from,
+                nombre,
+                texto: "Para generar tu certificado, por favor primero envía el soporte de pago."
+            });
+            return res.json({ success: true, mensaje: "Falta comprobante." });
+        }
 
-    await new Promise(resolve => setTimeout(resolve, 6000)); // Espera para asegurar disponibilidad
+        try {
+            await enviarMensajeYGuardar({
+                to,
+                userId: from,
+                nombre,
+                texto: "🔍 Un momento por favor..."
+            });
 
-    const whapiRes = await fetch(urlImg, {
-        method: 'GET',
-        headers: { "Authorization": `Bearer ${process.env.WHAPI_KEY}` }
-    });
+            const pdfUrl = await generarPdfDesdeApi2Pdf(userMessage);
+            await sendPdf(to, pdfUrl);
 
-    if (!whapiRes.ok) {
-        const errorText = await whapiRes.text();
-        console.error("Error de Whapi:", errorText);
-        return res.status(500).json({ success: false, error: "No se pudo descargar la imagen de Whapi" });
+            const nuevoHistorial = limpiarDuplicados([
+                ...mensajesHistorialLimpio,
+                { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+                { from: "sistema", mensaje: "PDF generado y enviado correctamente.", timestamp: new Date().toISOString() }
+            ]);
+            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+            return res.json({ success: true, mensaje: "PDF generado y enviado." });
+
+        } catch (err) {
+            console.error("Error generando o enviando PDF:", err);
+            await enviarMensajeYGuardar({
+                to,
+                userId: from,
+                nombre,
+                texto: "Ocurrió un error al generar tu certificado. Intenta más tarde."
+            });
+            return res.status(500).json({ success: false, error: err.message });
+        }
     }
 
-    const buffer = await whapiRes.buffer();
-    const base64Image = buffer.toString('base64');
-
-    const prompt = "Extrae SOLO el valor pagado (valor de la transferencia en pesos colombianos) que aparece en este comprobante bancario. Responde solo el valor exacto, sin explicaciones, ni símbolos adicionales.";
-
+    // Chat con OpenAI
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: 'POST',
         headers: {
@@ -54,56 +75,57 @@ async function procesarImagen(message, res) {
         },
         body: JSON.stringify({
             model: 'gpt-4o',
-            messages: [{
-                role: 'user',
-                content: [
-                    { type: 'text', text: prompt },
-                    { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Image}` } }
-                ]
-            }],
-            max_tokens: 50
+            messages: [
+                { role: 'system', content: promptInstitucional },
+                ...mensajesHistorialLimpio.map(m => ({
+                    role: m.from === "usuario" ? "user" : "assistant",
+                    content: m.mensaje
+                })),
+                { role: 'user', content: userMessage }
+            ],
+            max_tokens: 200
         })
     });
 
     const openaiJson = await aiRes.json();
-    console.log("Respuesta cruda de OpenAI:", JSON.stringify(openaiJson, null, 2));
-
-    let resultado = "No se obtuvo respuesta de OpenAI.";
+    let respuestaBot = "No se obtuvo respuesta de OpenAI.";
     if (openaiJson.choices?.[0]?.message) {
-        resultado = openaiJson.choices[0].message.content;
+        respuestaBot = openaiJson.choices[0].message.content;
     } else if (openaiJson.error?.message) {
-        resultado = `Error OpenAI: ${openaiJson.error.message}`;
+        respuestaBot = `Error OpenAI: ${openaiJson.error.message}`;
     }
 
-    const { mensajes: mensajesHistorial = [] } = await obtenerConversacionDeWix(from);
-    const nuevoHistorial = [
-        ...mensajesHistorial,
-        { from: "usuario", mensaje: "📷 Soporte de pago recibido", timestamp: new Date().toISOString() },
-        { from: "sistema", mensaje: `Hemos recibido tu comprobante. Valor detectado: $${resultado}`, timestamp: new Date().toISOString() }
-    ];
+    const nuevoHistorial = limpiarDuplicados([
+        ...mensajesHistorialLimpio,
+        { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+        { from: "sistema", mensaje: respuestaBot, timestamp: new Date().toISOString() }
+    ]);
 
     await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+    await sendMessage(to, respuestaBot);
 
-   const valorNumerico = resultado.replace(/[^0-9]/g, "");
-const valorEsValido = /^[0-9]{4,}$/.test(valorNumerico);
+    return res.json({ success: true, mensaje: "Respuesta enviada al usuario.", respuesta: respuestaBot });
+}
 
-if (!valorEsValido) {
-    await sendMessage(to, "No pude identificar el valor del comprobante. Por favor envía una imagen clara del soporte de pago.");
-    return res.json({
-        success: true,
-        mensaje: "Valor no detectado. Solicitud ignorada."
+function limpiarDuplicados(historial) {
+    const vistos = new Set();
+    return historial.filter(m => {
+        const clave = `${m.from}|${m.mensaje}`;
+        if (vistos.has(clave)) return false;
+        vistos.add(clave);
+        return true;
     });
 }
 
-await sendMessage(to, `Hemos recibido tu comprobante. Valor detectado: $${valorNumerico}`);
-await sendMessage(to, "¿Cuál es tu número de documento para generar tu certificado PDF?");
-
-
-    return res.json({
-        success: true,
-        mensaje: "Valor detectado y solicitud de documento enviada.",
-        valorDetectado: resultado
-    });
+async function enviarMensajeYGuardar({ to, userId, nombre, texto }) {
+    await sendMessage(to, texto);
+    const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
+    const historialLimpio = limpiarDuplicados(historial);
+    const nuevoHistorial = limpiarDuplicados([
+        ...historialLimpio,
+        { from: "sistema", mensaje: texto, timestamp: new Date().toISOString() }
+    ]);
+    await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
 }
 
-module.exports = { procesarImagen };
+module.exports = { procesarTexto };
