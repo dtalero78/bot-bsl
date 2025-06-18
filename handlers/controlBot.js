@@ -17,25 +17,30 @@ async function manejarControlBot(message) {
         const palabrasClaveStop = ["foundever", "ttec", "evertec", "rippling", "egreso"];
 
         // 🚫 Detención por frase exacta
-        if (bodyText && frasesDeDetencion.includes(bodyText)) {
-            console.log(`🛑 Bot desactivado por frase exacta para ${chatId}`);
-            await sendMessage(to, "Te estoy transfiriendo con asesor.");
-            await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, observaciones: "stop" })
-            });
-        }
+// 🚫 Detención por frase exacta
+if (bodyText && frasesDeDetencion.includes(bodyText)) {
+    console.log(`🛑 Bot desactivado por frase exacta para ${chatId}`);
+    await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, observaciones: "stop" })
+    });
+
+    return { detuvoBot: true }; // 👈 esta línea FALTABA
+}
+
 
         // 🚫 Detención por palabras clave
-        else if (bodyText && palabrasClaveStop.some(p => bodyText.includes(p))) {
-            console.log(`🛑 Bot desactivado por palabra clave para ${chatId}`);
-            await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, observaciones: "stop" })
-            });
-        }
+else if (bodyText && palabrasClaveStop.some(p => bodyText.includes(p))) {
+    console.log(`🛑 Bot desactivado por palabra clave para ${chatId}`);
+    await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, observaciones: "stop" })
+    });
+
+    return { detuvoBot: true }; // 👈 esta también
+}
 
         // ✅ Reactivar bot
         if (bodyText === "...te dejo con el bot 🤖") {

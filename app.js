@@ -1,4 +1,4 @@
-// ✅ app.js corregido para evitar duplicados y activar STOP si admin escribe "...transfiriendo con asesor"
+// ✅ app.js corregido
 
 require('dotenv').config();
 const express = require('express');
@@ -11,7 +11,6 @@ const { manejarControlBot } = require('./handlers/controlBot');
 const { procesarImagen } = require('./handlers/procesarImagen');
 const { procesarTexto } = require('./handlers/procesarTexto');
 const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('./utils/wixAPI');
-const { marcarStop } = require('./utils/marcarStop');
 
 function limpiarDuplicados(historial) {
     const vistos = new Set();
@@ -38,7 +37,7 @@ app.post('/soporte', async (req, res) => {
         const chatId = message.chat_id;
         const texto = message.text?.body?.trim() || "";
         const nombre = message.from_name || "Administrador";
-        const userId = chatId?.replace("@s.whatsapp.net", "") || from;
+        const userId = (chatId || from)?.replace("@s.whatsapp.net", "");
 
         // 🟡 Si lo escribe el admin
         if (message.from_me === true && message.type === "text") {
@@ -60,7 +59,11 @@ app.post('/soporte', async (req, res) => {
 
             // Si el mensaje contiene "transfiriendo con asesor", activa stop
             if (texto.toLowerCase().includes("transfiriendo con asesor")) {
-                await marcarStop(userId);
+                await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId, observaciones: "stop" })
+                });
                 console.log(`[ADMIN] Activado STOP para ${userId}`);
             }
 
