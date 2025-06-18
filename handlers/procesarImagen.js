@@ -1,7 +1,6 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const { sendMessage } = require('../utils/sendMessage');
 const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('../utils/wixAPI');
-const { generarPdfDesdeApi2Pdf, sendPdf } = require('../utils/pdf');
 
 async function procesarImagen(message, res) {
     const from = message.from;
@@ -9,7 +8,14 @@ async function procesarImagen(message, res) {
     const chatId = message.chat_id;
     const to = chatId || `${from}@s.whatsapp.net`;
 
-    // ✅ Verificación de stopBot
+    // ✅ Ignorar si la imagen fue enviada por el admin o el bot
+    const BOT_NUMBER = "573008021701";
+    if (message.from_me === true || message.from === BOT_NUMBER) {
+        console.log("📷 Imagen ignorada: fue enviada por el admin o el bot.");
+        return res.json({ success: true, mensaje: "Imagen del admin ignorada." });
+    }
+
+    // ✅ Verificación de observaciones para STOP
     const { observaciones = "" } = await obtenerConversacionDeWix(from);
     if (String(observaciones).toLowerCase().includes("stop")) {
         console.log(`[STOP] Usuario bloqueado por observaciones: ${from}`);
@@ -22,8 +28,7 @@ async function procesarImagen(message, res) {
 
     await sendMessage(to, "🔍 Un momento por favor...");
 
-    // Esperar 6 segundos para asegurar que la imagen esté disponible
-    await new Promise(resolve => setTimeout(resolve, 6000));
+    await new Promise(resolve => setTimeout(resolve, 6000)); // Espera para asegurar disponibilidad
 
     const whapiRes = await fetch(urlImg, {
         method: 'GET',
@@ -71,21 +76,14 @@ async function procesarImagen(message, res) {
     }
 
     const { mensajes: mensajesHistorial = [] } = await obtenerConversacionDeWix(from);
-
     const nuevoHistorial = [
         ...mensajesHistorial,
-        { from: "usuario", mensaje: "(imagen de comprobante)", timestamp: new Date().toISOString() },
+        { from: "usuario", mensaje: "📷 Soporte de pago recibido", timestamp: new Date().toISOString() },
         { from: "sistema", mensaje: `Hemos recibido tu comprobante. Valor detectado: $${resultado}`, timestamp: new Date().toISOString() }
     ];
 
-await guardarConversacionEnWix({
-  userId: from,
-  nombre,
-  mensajes: [
-    ...mensajesHistorial,
-    { from: "usuario", mensaje: "📷 Soporte de pago recibido", timestamp: new Date().toISOString() }
-  ]
-});
+    await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+
     await sendMessage(to, `Hemos recibido tu comprobante. Valor detectado: $${resultado}`);
     await sendMessage(to, "¿Cuál es tu número de documento para generar tu certificado PDF?");
 
