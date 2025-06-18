@@ -1,5 +1,5 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
-const { promptInstitucional } = require('../utils/prompt');
+const { promptInstitucional, promptClasificador } = require('../utils/prompt');
 const { sendMessage, sendPdf } = require('../utils/sendMessage');
 const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('../utils/wixAPI');
 const { generarPdfDesdeApi2Pdf } = require('../utils/pdf');
@@ -38,7 +38,7 @@ async function procesarTexto(message, res) {
                 messages: [
                     {
                         role: 'system',
-                        content: "Eres un clasificador de intenciones para un asistente médico. Dado un mensaje del usuario, responde solo con una de estas tres opciones:\n1. confirmar_cita\n2. pedir_certificado\n3. sin_intencion_clara"
+                        content: promptClasificador
                     },
                     {
                         role: 'user',
@@ -94,8 +94,9 @@ async function procesarTexto(message, res) {
             return res.json({ success: true, mensaje: "Consulta enviada." });
         }
 
-        if (intencion === "pedir_certificado") {
-            const haEnviadoSoporte = mensajesHistorialLimpio.some(m => m.mensaje.includes("Valor detectado"));
+        const haEnviadoSoporte = mensajesHistorialLimpio.some(m => m.mensaje.includes("Valor detectado"));
+
+        if (intencion === "pedir_certificado" || (intencion === "sin_intencion_clara" && haEnviadoSoporte)) {
             if (!haEnviadoSoporte) {
                 await enviarMensajeYGuardar({
                     to,
@@ -129,6 +130,7 @@ async function procesarTexto(message, res) {
                 return res.status(500).json({ success: false, error: err.message });
             }
         }
+
 
         await enviarMensajeYGuardar({
             to,

@@ -64,4 +64,15 @@ Eres un asistente virtual para exámenes médicos ocupacionales de la empresa BS
 - Resume tus respuestas usando viñetas si hay varios puntos.
 
 `;
-module.exports = { promptInstitucional };
+
+const promptClasificador = `
+Eres un clasificador de intenciones para un asistente médico. Según el mensaje del usuario anterior, responde con solo una de estas opciones:
+1. confirmar_cita → si el usuario quiere saber la fecha de su cita médica.
+2. pedir_certificado → si el usuario ya envió el comprobante o está preguntando por su certificado.
+3. sin_intencion_clara → si el mensaje no permite entender lo que necesita.
+`;
+
+module.exports = {
+  promptInstitucional,
+  promptClasificador
+};
