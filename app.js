@@ -8,6 +8,18 @@ app.use(express.json({ limit: '10mb' }));
 const { manejarControlBot } = require('./handlers/controlBot');
 const { procesarImagen } = require('./handlers/procesarImagen');
 const { procesarTexto } = require('./handlers/procesarTexto');
+const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('./utils/wixAPI');
+
+// 🔁 Función para limpiar duplicados
+function limpiarDuplicados(historial) {
+    const vistos = new Set();
+    return historial.filter(m => {
+        const clave = `${m.from}|${m.mensaje}`;
+        if (vistos.has(clave)) return false;
+        vistos.add(clave);
+        return true;
+    });
+}
 
 app.post('/soporte', async (req, res) => {
     try {
@@ -20,7 +32,7 @@ app.post('/soporte', async (req, res) => {
 
         const message = body.messages[0];
 
-        // 🟡 Mensaje enviado por el admin
+        // 🟡 Mensaje enviado por el admin (from_me === true)
         if (message.from_me === true && message.type === "text") {
             const userId = message.chat_id.replace("@s.whatsapp.net", "");
             const texto = message.text.body.trim();
@@ -41,9 +53,10 @@ app.post('/soporte', async (req, res) => {
 
             await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
             console.log(`[ADMIN] Mensaje guardado: "${texto}" para ${userId}`);
+            return res.json({ success: true, mensaje: "Mensaje de admin guardado." });
         }
 
-        // 🔵 Control del bot: stop / start
+        // 🔵 Control del bot (detener si contiene frase clave)
         const resultControl = await manejarControlBot(message);
         if (resultControl?.detuvoBot) {
             console.log("[BOT] Se detuvo el bot, no se procesa texto.");
@@ -55,12 +68,11 @@ app.post('/soporte', async (req, res) => {
             return await procesarImagen(message, res);
         }
 
-        // 🟢 Procesar texto del usuario
+        // 🟢 Procesar texto
         if (message.type === "text") {
             return await procesarTexto(message, res);
         }
 
-        // Otro tipo no procesado
         return res.json({ success: true, mensaje: "Mensaje ignorado (no es texto ni imagen procesable)." });
 
     } catch (error) {
@@ -68,8 +80,6 @@ app.post('/soporte', async (req, res) => {
         return res.status(500).json({ success: false, error: error.message });
     }
 });
-
-
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
