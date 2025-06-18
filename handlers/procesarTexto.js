@@ -24,8 +24,8 @@ async function procesarTexto(message, res) {
 
     if (esNumeroId) {
         const mensajePrevioUsuario = [...mensajesHistorialLimpio]
-  .reverse()
-  .find(m => m.from === "usuario" && m.mensaje.length > 4 && isNaN(Number(m.mensaje)))?.mensaje || "";
+            .reverse()
+            .find(m => m.from === "usuario" && m.mensaje.length > 4 && isNaN(Number(m.mensaje)))?.mensaje || "";
 
 
         const clasificacion = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -95,9 +95,9 @@ async function procesarTexto(message, res) {
             return res.json({ success: true, mensaje: "Consulta enviada." });
         }
 
-const haEnviadoSoporte = mensajesHistorialLimpio.some(m =>
-    /valor detectado/i.test(m.mensaje)
-);
+        const haEnviadoSoporte = mensajesHistorialLimpio.some(m =>
+            /valor detectado/i.test(m.mensaje)
+        );
 
         if (intencion === "pedir_certificado" || (intencion === "sin_intencion_clara" && haEnviadoSoporte)) {
             if (!haEnviadoSoporte) {
