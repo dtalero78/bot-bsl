@@ -35,14 +35,24 @@ async function procesarTexto(message, res) {
             ultimoMensaje.toLowerCase().includes("atención");
 
         // 🔔 Mensaje previo común
-        await sendMessage(to, "🔍 Un momento por favor...");
+        await enviarMensajeYGuardar({
+            to,
+            userId: from,
+            nombre,
+            texto: "🔍 Un momento por favor..."
+        });
 
         if (pidioConsulta) {
             try {
                 const info = await consultarInformacionPaciente(userMessage);
 
                 if (!info || info.length === 0) {
-                    await sendMessage(to, "No encontré información médica con ese documento.");
+                    await enviarMensajeYGuardar({
+                        to,
+                        userId: from,
+                        nombre,
+                        texto: "No encontré información médica con ese documento."
+                    });
                 } else {
                     const datos = info[0];
                     const opcionesFecha = {
@@ -78,7 +88,12 @@ async function procesarTexto(message, res) {
 
             } catch (err) {
                 console.error("❌ Error en consulta paciente:", err);
-                await sendMessage(to, "Ocurrió un error consultando la información. Intenta más tarde.");
+                await enviarMensajeYGuardar({
+                    to,
+                    userId: from,
+                    nombre,
+                    texto: "Ocurrió un error consultando la información. Intenta más tarde."
+                });
                 return res.status(500).json({ success: false, error: err.message });
             }
         } else {
@@ -86,7 +101,12 @@ async function procesarTexto(message, res) {
 
             if (!respuestaMarcado.success) {
                 console.error("❌ No se pudo marcar como Pagado:", respuestaMarcado);
-                await sendMessage(to, "No pudimos registrar tu pago. Intenta más tarde o contacta soporte.");
+                await enviarMensajeYGuardar({
+                    to,
+                    userId: from,
+                    nombre,
+                    texto: "No pudimos registrar tu pago. Intenta más tarde o contacta soporte."
+                });
 
                 const nuevoHistorialError = limpiarDuplicados([
                     ...mensajesHistorialLimpio,
@@ -115,7 +135,12 @@ async function procesarTexto(message, res) {
 
             } catch (err) {
                 console.error("Error generando o enviando PDF:", err);
-                await sendMessage(to, "Ocurrió un error al generar tu certificado. Intenta más tarde.");
+                await enviarMensajeYGuardar({
+                    to,
+                    userId: from,
+                    nombre,
+                    texto: "Ocurrió un error al generar tu certificado. Intenta más tarde."
+                });
                 return res.status(500).json({ success: false, error: err.message });
             }
         }
@@ -153,11 +178,11 @@ async function procesarTexto(message, res) {
 
 
     // Guardar y responder normalmente
-    const nuevoHistorial = [
-        ...mensajesHistorial,
+    const nuevoHistorial = limpiarDuplicados([
+        ...mensajesHistorialLimpio,
         { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
         { from: "sistema", mensaje: respuestaBot, timestamp: new Date().toISOString() }
-    ];
+    ]);
 
     await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
     await sendMessage(to, respuestaBot);
@@ -175,5 +200,22 @@ function limpiarDuplicados(historial) {
         return true;
     });
 }
+
+
+async function enviarMensajeYGuardar({ to, userId, nombre, texto }) {
+    await sendMessage(to, texto);
+
+    const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
+    const historialLimpio = limpiarDuplicados(historial);
+
+    const nuevoHistorial = limpiarDuplicados([
+        ...historialLimpio,
+        { from: "sistema", mensaje: texto, timestamp: new Date().toISOString() }
+    ]);
+
+    await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
+}
+
+
 
 module.exports = { procesarTexto };
