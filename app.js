@@ -43,31 +43,36 @@ app.post('/soporte', async (req, res) => {
             return res.json(resultControl);
         }
 
-        // 🟡 Si lo escribe el admin
-        if (message.from_me === true && message.type === "text") {
-            const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
-            const historialLimpio = limpiarDuplicados(historial);
+        // 🟡 Si el admin escribe desde WhatsApp Web/celular
+        if (message.from_me && message.source !== 'api' && message.type === 'text') {
+            const adminMensaje = {
+                from: "admin",
+                mensaje: message.text.body,
+                timestamp: new Date().toISOString(),
+                tipo: "manual"
+            };
 
-            // ✅ IGNORAR si el mensaje ya fue enviado por el sistema justo antes
+            const { mensajes = [] } = await obtenerConversacionDeWix(userId);
+            const historialLimpio = limpiarDuplicados(mensajes);
+
             const ultimoSistema = [...historialLimpio].reverse().find(m => m.from === "sistema");
-            if (ultimoSistema && ultimoSistema.mensaje === texto) {
+            if (ultimoSistema && ultimoSistema.mensaje === adminMensaje.mensaje) {
                 console.log("🟡 Ignorando mensaje duplicado del bot:", texto);
                 return res.json({ success: true, mensaje: "Mensaje duplicado ignorado." });
             }
 
             const nuevoHistorial = limpiarDuplicados([
                 ...historialLimpio,
-                {
-                    from: "admin",
-                    mensaje: texto,
-                    timestamp: new Date().toISOString(),
-                    tipo: "manual"
-                }
+                adminMensaje
             ]);
 
-            await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
-            console.log(`[ADMIN] Mensaje guardado: "${texto}" para ${userId}`);
+            await guardarConversacionEnWix({
+                userId,
+                nombre: "ADMIN",
+                mensajes: nuevoHistorial
+            });
 
+            console.log(`[ADMIN] Mensaje manual guardado: ${adminMensaje.mensaje}`);
             return res.json({ success: true, mensaje: "Mensaje de admin procesado." });
         }
 
