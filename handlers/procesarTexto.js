@@ -3,7 +3,6 @@ const { promptInstitucional, promptClasificador } = require('../utils/prompt');
 const { sendMessage } = require('../utils/sendMessage');
 const { sendPdf, generarPdfDesdeApi2Pdf } = require('../utils/pdf');
 const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('../utils/wixAPI');
-const { generarPdfDesdeApi2Pdf } = require('../utils/pdf');
 const { consultarInformacionPaciente } = require('../utils/consultarPaciente');
 
 async function procesarTexto(message, res) {
