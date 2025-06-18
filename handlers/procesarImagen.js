@@ -84,8 +84,20 @@ async function procesarImagen(message, res) {
 
     await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
 
-    await sendMessage(to, `Hemos recibido tu comprobante. Valor detectado: $${resultado}`);
-    await sendMessage(to, "¿Cuál es tu número de documento para generar tu certificado PDF?");
+   const valorNumerico = resultado.replace(/[^0-9]/g, "");
+const valorEsValido = /^[0-9]{4,}$/.test(valorNumerico);
+
+if (!valorEsValido) {
+    await sendMessage(to, "No pude identificar el valor del comprobante. Por favor envía una imagen clara del soporte de pago.");
+    return res.json({
+        success: true,
+        mensaje: "Valor no detectado. Solicitud ignorada."
+    });
+}
+
+await sendMessage(to, `Hemos recibido tu comprobante. Valor detectado: $${valorNumerico}`);
+await sendMessage(to, "¿Cuál es tu número de documento para generar tu certificado PDF?");
+
 
     return res.json({
         success: true,
