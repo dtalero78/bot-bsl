@@ -44,6 +44,13 @@ app.post('/soporte', async (req, res) => {
             const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
             const historialLimpio = limpiarDuplicados(historial);
 
+            // ✅ IGNORAR si el mensaje ya fue enviado por el sistema justo antes
+            const ultimoSistema = [...historialLimpio].reverse().find(m => m.from === "sistema");
+            if (ultimoSistema && ultimoSistema.mensaje === texto) {
+                console.log("🟡 Ignorando mensaje duplicado del bot:", texto);
+                return res.json({ success: true, mensaje: "Mensaje duplicado ignorado." });
+            }
+
             const nuevoHistorial = limpiarDuplicados([
                 ...historialLimpio,
                 {
@@ -69,6 +76,7 @@ app.post('/soporte', async (req, res) => {
 
             return res.json({ success: true, mensaje: "Mensaje de admin procesado." });
         }
+
 
         const resultControl = await manejarControlBot(message);
         if (resultControl?.detuvoBot) {
