@@ -19,18 +19,50 @@ app.post('/soporte', async (req, res) => {
         }
 
         const message = body.messages[0];
-        const resultControl = await manejarControlBot(message);
-        if (resultControl) return res.json(resultControl);
 
+        // 🟡 Mensaje enviado por el admin
+        if (message.from_me === true && message.type === "text") {
+            const userId = message.chat_id.replace("@s.whatsapp.net", "");
+            const texto = message.text.body.trim();
+            const nombre = message.from_name || "Administrador";
+
+            const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
+            const historialLimpio = limpiarDuplicados(historial);
+
+            const nuevoHistorial = limpiarDuplicados([
+                ...historialLimpio,
+                {
+                    from: "admin",
+                    mensaje: texto,
+                    timestamp: new Date().toISOString(),
+                    tipo: "manual"
+                }
+            ]);
+
+            await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
+            console.log(`[ADMIN] Mensaje guardado: "${texto}" para ${userId}`);
+        }
+
+        // 🔵 Control del bot: stop / start
+        const resultControl = await manejarControlBot(message);
+        if (resultControl?.detuvoBot) {
+            console.log("[BOT] Se detuvo el bot, no se procesa texto.");
+            return res.json(resultControl);
+        }
+
+        // 🟠 Procesar imagen
         if (message.type === "image") {
             return await procesarImagen(message, res);
         }
 
+        // 🟢 Procesar texto del usuario
         if (message.type === "text") {
             return await procesarTexto(message, res);
         }
 
+        // Otro tipo no procesado
         return res.json({ success: true, mensaje: "Mensaje ignorado (no es texto ni imagen procesable)." });
+
     } catch (error) {
         console.error("Error general en /soporte:", error);
         return res.status(500).json({ success: false, error: error.message });
