@@ -1,10 +1,9 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const { promptInstitucional } = require('../utils/prompt');
-const { sendMessage } = require('../utils/sendMessage');
+const { sendMessage, sendPdf } = require('../utils/sendMessage');
 const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('../utils/wixAPI');
-const { generarPdfDesdeApi2Pdf, sendPdf } = require('../utils/pdf');
+const { generarPdfDesdeApi2Pdf } = require('../utils/pdf');
 const { consultarInformacionPaciente } = require('../utils/consultarPaciente');
-const { marcarPagado } = require('../utils/marcarPagado');
 
 async function procesarTexto(message, res) {
     const from = message.from;
@@ -23,13 +22,11 @@ async function procesarTexto(message, res) {
         return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones (silencioso)." });
     }
 
-    // Detectar si envió número de documento
     if (esNumeroId) {
         const mensajePrevioUsuario = [...mensajesHistorialLimpio]
             .reverse()
             .find(m => m.from === "usuario" && !/^\d{7,10}$/.test(m.mensaje))?.mensaje || "";
 
-        // 🔎 Clasificar intención usando OpenAI
         const clasificacion = await fetch("https://api.openai.com/v1/chat/completions", {
             method: 'POST',
             headers: {
@@ -63,61 +60,86 @@ async function procesarTexto(message, res) {
         });
 
         if (intencion === "confirmar_cita") {
-            try {
-                const info = await consultarInformacionPaciente(userMessage);
-                if (!info || info.length === 0) {
-                    await enviarMensajeYGuardar({
-                        to,
-                        userId: from,
-                        nombre,
-                        texto: "No encontré información médica con ese documento."
-                    });
-                } else {
-                    const datos = info[0];
-                    const opcionesFecha = {
-                        timeZone: "America/Bogota",
-                        day: "2-digit",
-                        month: "long",
-                        year: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                        hour12: true
-                    };
-                    const fechaAtencionFormateada = datos.fechaAtencion
-                        ? new Date(datos.fechaAtencion).toLocaleString("es-CO", opcionesFecha)
-                        : "No registrada";
-                    const resumen = `📄 Información registrada:\n👤 ${datos.primerNombre} ${datos.primerApellido}\n📅 Fecha consulta: ${fechaAtencionFormateada.replace(',', ' a las')}\n📲 Celular: ${datos.celular || "No disponible"}`;
-                    await sendMessage(to, resumen);
-                }
-                const nuevoHistorial = limpiarDuplicados([
-                    ...mensajesHistorialLimpio,
-                    { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-                    { from: "sistema", mensaje: "Consulta médica enviada.", timestamp: new Date().toISOString() }
-                ]);
-                await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
-                return res.json({ success: true, mensaje: "Consulta enviada." });
-            } catch (err) {
-                console.error("❌ Error en consulta paciente:", err);
+            const info = await consultarInformacionPaciente(userMessage);
+            if (!info || info.length === 0) {
                 await enviarMensajeYGuardar({
                     to,
                     userId: from,
                     nombre,
-                    texto: "Ocurrió un error consultando la información. Intenta más tarde."
+                    texto: "No encontré información médica con ese documento."
+                });
+            } else {
+                const datos = info[0];
+                const opcionesFecha = {
+                    timeZone: "America/Bogota",
+                    day: "2-digit",
+                    month: "long",
+                    year: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                    hour12: true
+                };
+                const fechaAtencion = datos.fechaAtencion
+                    ? new Date(datos.fechaAtencion).toLocaleString("es-CO", opcionesFecha).replace(',', ' a las')
+                    : "No registrada";
+                const resumen = `📄 Información registrada:\n👤 ${datos.primerNombre} ${datos.primerApellido}\n📅 Fecha consulta: ${fechaAtencion}\n📲 Celular: ${datos.celular || "No disponible"}`;
+                await sendMessage(to, resumen);
+            }
+            const nuevoHistorial = limpiarDuplicados([
+                ...mensajesHistorialLimpio,
+                { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+                { from: "sistema", mensaje: "Consulta médica enviada.", timestamp: new Date().toISOString() }
+            ]);
+            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+            return res.json({ success: true, mensaje: "Consulta enviada." });
+        }
+
+        if (intencion === "pedir_certificado") {
+            const haEnviadoSoporte = mensajesHistorialLimpio.some(m => m.mensaje.includes("Valor detectado"));
+            if (!haEnviadoSoporte) {
+                await enviarMensajeYGuardar({
+                    to,
+                    userId: from,
+                    nombre,
+                    texto: "Para generar tu certificado, por favor primero envía el soporte de pago."
+                });
+                return res.json({ success: true, mensaje: "Falta comprobante." });
+            }
+
+            try {
+                const pdfUrl = await generarPdfDesdeApi2Pdf(userMessage);
+                await sendPdf(to, pdfUrl);
+
+                const nuevoHistorial = limpiarDuplicados([
+                    ...mensajesHistorialLimpio,
+                    { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
+                    { from: "sistema", mensaje: "PDF generado y enviado correctamente.", timestamp: new Date().toISOString() }
+                ]);
+                await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+                return res.json({ success: true, mensaje: "PDF generado y enviado." });
+
+            } catch (err) {
+                console.error("Error generando o enviando PDF:", err);
+                await enviarMensajeYGuardar({
+                    to,
+                    userId: from,
+                    nombre,
+                    texto: "Ocurrió un error al generar tu certificado. Intenta más tarde."
                 });
                 return res.status(500).json({ success: false, error: err.message });
             }
-        } else {
-            await enviarMensajeYGuardar({
-                to,
-                userId: from,
-                nombre,
-                texto: "Para generar tu certificado, por favor primero envía el soporte de pago."
-            });
-            return res.json({ success: true, mensaje: "Solicitud de pago solicitada antes de enviar certificado." });
         }
+
+        await enviarMensajeYGuardar({
+            to,
+            userId: from,
+            nombre,
+            texto: "Gracias por la información. ¿En qué te puedo ayudar?"
+        });
+        return res.json({ success: true, mensaje: "Intención no clara." });
     }
 
-    // Chat con OpenAI
+    // Chat normal con OpenAI
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: 'POST',
         headers: {
