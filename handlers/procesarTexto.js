@@ -4,6 +4,8 @@ const { sendMessage } = require('../utils/sendMessage');
 const { sendPdf, generarPdfDesdeApi2Pdf } = require('../utils/pdf');
 const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('../utils/wixAPI');
 const { consultarInformacionPaciente } = require('../utils/consultarPaciente');
+const { marcarPagado } = require('../utils/marcarPagado');
+
 
 async function procesarTexto(message, res) {
     const from = message.from;
@@ -111,6 +113,7 @@ async function procesarTexto(message, res) {
             }
 
             try {
+                await marcarPagado(userMessage);
                 const pdfUrl = await generarPdfDesdeApi2Pdf(userMessage);
                 await sendPdf(to, pdfUrl);
 
