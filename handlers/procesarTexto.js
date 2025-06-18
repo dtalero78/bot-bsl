@@ -1,6 +1,7 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const { promptInstitucional, promptClasificador } = require('../utils/prompt');
-const { sendMessage, sendPdf } = require('../utils/sendMessage');
+const { sendMessage } = require('../utils/sendMessage');
+const { sendPdf, generarPdfDesdeApi2Pdf } = require('../utils/pdf');
 const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('../utils/wixAPI');
 const { generarPdfDesdeApi2Pdf } = require('../utils/pdf');
 const { consultarInformacionPaciente } = require('../utils/consultarPaciente');
