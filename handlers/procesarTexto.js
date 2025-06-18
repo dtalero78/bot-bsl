@@ -25,7 +25,9 @@ async function procesarTexto(message, res) {
 
     // Detectar si envió número de documento
     if (esNumeroId) {
-        const mensajePrevioUsuario = [...mensajesHistorialLimpio].reverse().find(m => m.from === "usuario")?.mensaje || "";
+        const mensajePrevioUsuario = [...mensajesHistorialLimpio]
+            .reverse()
+            .find(m => m.from === "usuario" && !/^\d{7,10}$/.test(m.mensaje))?.mensaje || "";
 
         // 🔎 Clasificar intención usando OpenAI
         const clasificacion = await fetch("https://api.openai.com/v1/chat/completions", {
