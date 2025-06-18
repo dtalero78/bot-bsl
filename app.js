@@ -1,5 +1,3 @@
-// ✅ app.js corregido
-
 require('dotenv').config();
 const express = require('express');
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
@@ -12,6 +10,7 @@ const { procesarImagen } = require('./handlers/procesarImagen');
 const { procesarTexto } = require('./handlers/procesarTexto');
 const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('./utils/wixAPI');
 
+// 🔁 Evitar mensajes repetidos
 function limpiarDuplicados(historial) {
     const vistos = new Set();
     return historial.filter(m => {
@@ -32,12 +31,17 @@ app.post('/soporte', async (req, res) => {
         }
 
         const message = body.messages[0];
-
         const from = message.from;
         const chatId = message.chat_id;
         const texto = message.text?.body?.trim() || "";
         const nombre = message.from_name || "Administrador";
         const userId = (chatId || from)?.replace("@s.whatsapp.net", "");
+
+        // 🟢 Primero revisar control del bot
+        const resultControl = await manejarControlBot(message);
+        if (resultControl?.detuvoBot) {
+            return res.json(resultControl);
+        }
 
         // 🟡 Si lo escribe el admin
         if (message.from_me === true && message.type === "text") {
@@ -64,29 +68,15 @@ app.post('/soporte', async (req, res) => {
             await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
             console.log(`[ADMIN] Mensaje guardado: "${texto}" para ${userId}`);
 
-            // Si el mensaje contiene "transfiriendo con asesor", activa stop
-            if (texto.toLowerCase().includes("transfiriendo con asesor")) {
-                await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId, observaciones: "stop" })
-                });
-                console.log(`[ADMIN] Activado STOP para ${userId}`);
-            }
-
             return res.json({ success: true, mensaje: "Mensaje de admin procesado." });
         }
 
-
-        const resultControl = await manejarControlBot(message);
-        if (resultControl?.detuvoBot) {
-            return res.json(resultControl);
-        }
-
+        // 🖼 Imagen recibida
         if (message.type === "image") {
             return await procesarImagen(message, res);
         }
 
+        // 💬 Texto recibido
         if (message.type === "text") {
             return await procesarTexto(message, res);
         }
