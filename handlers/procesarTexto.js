@@ -6,13 +6,11 @@ const { generarPdfDesdeApi2Pdf, sendPdf } = require('../utils/pdf');
 const { consultarInformacionPaciente } = require('../utils/consultarPaciente');
 const { marcarPagado } = require('../utils/marcarPagado');
 
-
 async function procesarTexto(message, res) {
     const from = message.from;
     const nombre = message.from_name || "Nombre desconocido";
     const chatId = message.chat_id;
     const to = chatId || `${from}@s.whatsapp.net`;
-
     const userMessage = message.text.body.trim();
     const esNumeroId = /^\d{7,10}$/.test(userMessage);
 
@@ -27,14 +25,34 @@ async function procesarTexto(message, res) {
 
     // Detectar si envió número de documento
     if (esNumeroId) {
-        const ultimoMensaje = mensajesHistorialLimpio[mensajesHistorialLimpio.length - 1]?.mensaje || "";
+        const mensajePrevioUsuario = [...mensajesHistorialLimpio].reverse().find(m => m.from === "usuario")?.mensaje || "";
 
-        const pidioConsulta = ultimoMensaje.toLowerCase().includes("consulta") ||
-            ultimoMensaje.toLowerCase().includes("cita") ||
-            ultimoMensaje.toLowerCase().includes("médico") ||
-            ultimoMensaje.toLowerCase().includes("atención");
+        // 🔎 Clasificar intención usando OpenAI
+        const clasificacion = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${process.env.OPENAI_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: 'gpt-4o',
+                messages: [
+                    {
+                        role: 'system',
+                        content: "Eres un clasificador de intenciones para un asistente médico. Dado un mensaje del usuario, responde solo con una de estas tres opciones:\n1. confirmar_cita\n2. pedir_certificado\n3. sin_intencion_clara"
+                    },
+                    {
+                        role: 'user',
+                        content: mensajePrevioUsuario
+                    }
+                ],
+                max_tokens: 10
+            })
+        });
 
-        // 🔔 Mensaje previo común
+        const resultadoClasificacion = await clasificacion.json();
+        const intencion = resultadoClasificacion?.choices?.[0]?.message?.content?.trim() || "sin_intencion_clara";
+
         await enviarMensajeYGuardar({
             to,
             userId: from,
@@ -42,10 +60,9 @@ async function procesarTexto(message, res) {
             texto: "🔍 Un momento por favor..."
         });
 
-        if (pidioConsulta) {
+        if (intencion === "confirmar_cita") {
             try {
                 const info = await consultarInformacionPaciente(userMessage);
-
                 if (!info || info.length === 0) {
                     await enviarMensajeYGuardar({
                         to,
@@ -64,28 +81,19 @@ async function procesarTexto(message, res) {
                         minute: "2-digit",
                         hour12: true
                     };
-
                     const fechaAtencionFormateada = datos.fechaAtencion
                         ? new Date(datos.fechaAtencion).toLocaleString("es-CO", opcionesFecha)
                         : "No registrada";
-
-                    const resumen = `📄 Información registrada:
-👤 ${datos.primerNombre} ${datos.primerApellido}
-📅 Fecha consulta: ${fechaAtencionFormateada.replace(',', ' a las')}
-📲 Celular: ${datos.celular || "No disponible"}`;
-
+                    const resumen = `📄 Información registrada:\n👤 ${datos.primerNombre} ${datos.primerApellido}\n📅 Fecha consulta: ${fechaAtencionFormateada.replace(',', ' a las')}\n📲 Celular: ${datos.celular || "No disponible"}`;
                     await sendMessage(to, resumen);
                 }
-
                 const nuevoHistorial = limpiarDuplicados([
                     ...mensajesHistorialLimpio,
                     { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
                     { from: "sistema", mensaje: "Consulta médica enviada.", timestamp: new Date().toISOString() }
                 ]);
-
                 await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
                 return res.json({ success: true, mensaje: "Consulta enviada." });
-
             } catch (err) {
                 console.error("❌ Error en consulta paciente:", err);
                 await enviarMensajeYGuardar({
@@ -97,55 +105,15 @@ async function procesarTexto(message, res) {
                 return res.status(500).json({ success: false, error: err.message });
             }
         } else {
-            const respuestaMarcado = await marcarPagado(userMessage);
-
-            if (!respuestaMarcado.success) {
-                console.error("❌ No se pudo marcar como Pagado:", respuestaMarcado);
-                await enviarMensajeYGuardar({
-                    to,
-                    userId: from,
-                    nombre,
-                    texto: "No pudimos registrar tu pago. Intenta más tarde o contacta soporte."
-                });
-
-                const nuevoHistorialError = limpiarDuplicados([
-                    ...mensajesHistorialLimpio,
-                    { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-                    { from: "sistema", mensaje: "Error marcando como pagado.", timestamp: new Date().toISOString() }
-                ]);
-
-                await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorialError });
-
-                return res.status(500).json({ success: false, error: "No se pudo marcar como pagado" });
-            }
-
-            // 🧾 Generación del PDF
-            try {
-                const pdfUrl = await generarPdfDesdeApi2Pdf(userMessage);
-                await sendPdf(to, pdfUrl);
-
-                const nuevoHistorial = limpiarDuplicados([
-                    ...mensajesHistorialLimpio,
-                    { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-                    { from: "sistema", mensaje: "PDF generado y enviado correctamente.", timestamp: new Date().toISOString() }
-                ]);
-
-                await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
-                return res.json({ success: true, mensaje: "PDF generado y enviado." });
-
-            } catch (err) {
-                console.error("Error generando o enviando PDF:", err);
-                await enviarMensajeYGuardar({
-                    to,
-                    userId: from,
-                    nombre,
-                    texto: "Ocurrió un error al generar tu certificado. Intenta más tarde."
-                });
-                return res.status(500).json({ success: false, error: err.message });
-            }
+            await enviarMensajeYGuardar({
+                to,
+                userId: from,
+                nombre,
+                texto: "Para generar tu certificado, por favor primero envía el soporte de pago."
+            });
+            return res.json({ success: true, mensaje: "Solicitud de pago solicitada antes de enviar certificado." });
         }
     }
-
 
     // Chat con OpenAI
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -176,8 +144,6 @@ async function procesarTexto(message, res) {
         respuestaBot = `Error OpenAI: ${openaiJson.error.message}`;
     }
 
-
-    // Guardar y responder normalmente
     const nuevoHistorial = limpiarDuplicados([
         ...mensajesHistorialLimpio,
         { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
@@ -190,7 +156,6 @@ async function procesarTexto(message, res) {
     return res.json({ success: true, mensaje: "Respuesta enviada al usuario.", respuesta: respuestaBot });
 }
 
-// Función para limpiar duplicados por origen y mensaje
 function limpiarDuplicados(historial) {
     const vistos = new Set();
     return historial.filter(m => {
@@ -201,20 +166,15 @@ function limpiarDuplicados(historial) {
     });
 }
 
-
 async function enviarMensajeYGuardar({ to, userId, nombre, texto }) {
     await sendMessage(to, texto);
-
     const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
     const historialLimpio = limpiarDuplicados(historial);
-
     const nuevoHistorial = limpiarDuplicados([
         ...historialLimpio,
         { from: "sistema", mensaje: texto, timestamp: new Date().toISOString() }
     ]);
-
     await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
 }
-
 
 module.exports = { procesarTexto };
