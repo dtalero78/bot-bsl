@@ -101,19 +101,13 @@ async function procesarTexto(message, res) {
             /valor detectado/i.test(m.mensaje)
         );
 
-        if (intencion === "pedir_certificado" || (intencion === "sin_intencion_clara" && haEnviadoSoporte)) {
-            if (!haEnviadoSoporte) {
-                await enviarMensajeYGuardar({
-                    to,
-                    userId: from,
-                    nombre,
-                    texto: "Para generar tu certificado, por favor primero envía el soporte de pago."
-                });
-                return res.json({ success: true, mensaje: "Falta comprobante." });
-            }
-
+        if (
+            intencion === "pedir_certificado" ||
+            (intencion === "sin_intencion_clara" && haEnviadoSoporte) ||
+            (haEnviadoSoporte && /^\d+$/.test(userMessage))
+        ) {
             try {
-                await marcarPagado(userMessage);
+                await marcarPagado(userMessage); // ← Aquí usas el número de documento, ¡correcto!
                 const pdfUrl = await generarPdfDesdeApi2Pdf(userMessage);
                 await sendPdf(to, pdfUrl);
 
