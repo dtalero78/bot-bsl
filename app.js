@@ -73,26 +73,32 @@ app.post('/soporte', async (req, res) => {
 
         // ADMIN (respuesta manual desde WhatsApp web/mobile)
         if (actor === "admin") {
-            const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
-            const historialLimpio = limpiarDuplicados(historial);
-            const ultimoAdmin = [...historialLimpio].reverse().find(m => m.from === "admin");
-            if (ultimoAdmin && ultimoAdmin.mensaje === texto) {
-                console.log("🟡 Ignorando mensaje duplicado del admin:", texto);
-                return res.json({ success: true, mensaje: "Mensaje duplicado ignorado." });
-            }
-            const nuevoHistorial = limpiarDuplicados([
-                ...historialLimpio,
-                {
-                    from: "admin",
-                    mensaje: texto,
-                    timestamp: new Date().toISOString(),
-                    tipo: "manual"
+            // Permitir texto y link_preview del admin
+            if (message.type === "text" || message.type === "link_preview") {
+                const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
+                const historialLimpio = limpiarDuplicados(historial);
+                const ultimoAdmin = [...historialLimpio].reverse().find(m => m.from === "admin");
+                if (ultimoAdmin && ultimoAdmin.mensaje === texto) {
+                    console.log("🟡 Ignorando mensaje duplicado del admin:", texto);
+                    return res.json({ success: true, mensaje: "Mensaje duplicado ignorado." });
                 }
-            ]);
-            await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
-            console.log(`[ADMIN] Mensaje guardado: "${texto}" para ${userId}`);
-            return res.json({ success: true, mensaje: "Mensaje de admin guardado." });
+                const nuevoHistorial = limpiarDuplicados([
+                    ...historialLimpio,
+                    {
+                        from: "admin",
+                        mensaje: texto,
+                        timestamp: new Date().toISOString(),
+                        tipo: "manual"
+                    }
+                ]);
+                await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
+                console.log(`[ADMIN] Mensaje guardado: "${texto}" para ${userId}`);
+                return res.json({ success: true, mensaje: "Mensaje de admin guardado." });
+            }
+            // Si no es texto ni link_preview, simplemente ignorar:
+            return res.json({ success: true, mensaje: "Mensaje de admin no relevante (tipo no soportado)." });
         }
+
 
         // USUARIO (otro número)
         if (actor === "usuario") {
