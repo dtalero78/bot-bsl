@@ -21,15 +21,26 @@ function limpiarDuplicados(historial) {
     });
 }
 
+const BOT_NUMBER = "573008021701"; // tu número de bot/admin
+
+function identificarActor(message) {
+    if (message.from !== BOT_NUMBER) return "usuario";
+    // Aquí ambos bot y admin son from_me===true y from==BOT_NUMBER
+    // Pero el bot tiene source: "api"
+    // El admin tiene source: "web" o "mobile"
+    if (message.from_me === true) {
+        if (message.source === "api") return "sistema"; // Respuesta automática del bot
+        if (message.source === "web" || message.source === "mobile") return "admin"; // Manual desde WhatsApp
+    }
+    return "usuario"; // fallback
+}
+
 app.post('/soporte', async (req, res) => {
     try {
         const body = req.body;
-        console.log("Payload recibido:", JSON.stringify(body, null, 2));
-
         if (!body || !body.messages || !Array.isArray(body.messages)) {
             return res.status(400).json({ success: false, error: "No hay mensajes en el payload." });
         }
-
         const message = body.messages[0];
         const from = message.from;
         const chatId = message.chat_id;
@@ -37,49 +48,62 @@ app.post('/soporte', async (req, res) => {
         const nombre = message.from_name || "Administrador";
         const userId = (chatId || from)?.replace("@s.whatsapp.net", "");
 
-        // 🟢 Primero revisar control del bot
-        const resultControl = await manejarControlBot(message);
-        if (resultControl?.detuvoBot) {
-            return res.json(resultControl);
+        const actor = identificarActor(message);
+
+        // SISTEMA (bot automático)
+        if (actor === "sistema") {
+            const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
+            const historialLimpio = limpiarDuplicados(historial);
+            const ultimoSistema = [...historialLimpio].reverse().find(m => m.from === "sistema");
+            if (ultimoSistema && ultimoSistema.mensaje === texto) {
+                console.log("🟡 Ignorando mensaje duplicado del bot:", texto);
+                return res.json({ success: true, mensaje: "Mensaje duplicado ignorado." });
+            }
+            const nuevoHistorial = limpiarDuplicados([
+                ...historialLimpio,
+                {
+                    from: "sistema",
+                    mensaje: texto,
+                    timestamp: new Date().toISOString()
+                }
+            ]);
+            await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
+            return res.json({ success: true, mensaje: "Mensaje del sistema guardado." });
         }
 
-        // 🟡 Si lo escribe el admin
-        // 🟡 Si lo escribe el admin
-if (message.from_me === true && message.type === "text") {
-    const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
-    const historialLimpio = limpiarDuplicados(historial);
-
-    const ultimoSistema = [...historialLimpio].reverse().find(m => m.from === "sistema");
-    if (ultimoSistema && ultimoSistema.mensaje === texto) {
-        console.log("🟡 Ignorando mensaje duplicado del bot:", texto);
-        return res.json({ success: true, mensaje: "Mensaje duplicado ignorado." });
-    }
-
-    const nuevoHistorial = limpiarDuplicados([
-        ...historialLimpio,
-        {
-            from: "admin",
-            mensaje: texto,
-            timestamp: new Date().toISOString(),
-            tipo: "manual"
-        }
-    ]);
-
-    await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
-    console.log(`[ADMIN] Mensaje guardado: "${texto}" para ${userId}`);
-
-    return res.json({ success: true, mensaje: "Mensaje de admin procesado." });
-}
-
-
-        // 🖼 Imagen recibida
-        if (message.type === "image") {
-            return await procesarImagen(message, res);
+        // ADMIN (respuesta manual desde WhatsApp web/mobile)
+        if (actor === "admin") {
+            const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
+            const historialLimpio = limpiarDuplicados(historial);
+            const ultimoAdmin = [...historialLimpio].reverse().find(m => m.from === "admin");
+            if (ultimoAdmin && ultimoAdmin.mensaje === texto) {
+                console.log("🟡 Ignorando mensaje duplicado del admin:", texto);
+                return res.json({ success: true, mensaje: "Mensaje duplicado ignorado." });
+            }
+            const nuevoHistorial = limpiarDuplicados([
+                ...historialLimpio,
+                {
+                    from: "admin",
+                    mensaje: texto,
+                    timestamp: new Date().toISOString(),
+                    tipo: "manual"
+                }
+            ]);
+            await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
+            console.log(`[ADMIN] Mensaje guardado: "${texto}" para ${userId}`);
+            return res.json({ success: true, mensaje: "Mensaje de admin guardado." });
         }
 
-        // 💬 Texto recibido
-        if (message.type === "text") {
-            return await procesarTexto(message, res);
+        // USUARIO (otro número)
+        if (actor === "usuario") {
+            // Imagen recibida
+            if (message.type === "image") {
+                return await procesarImagen(message, res);
+            }
+            // Texto recibido
+            if (message.type === "text") {
+                return await procesarTexto(message, res);
+            }
         }
 
         return res.json({ success: true, mensaje: "Mensaje ignorado." });
@@ -89,6 +113,8 @@ if (message.from_me === true && message.type === "text") {
         return res.status(500).json({ success: false, error: error.message });
     }
 });
+
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
