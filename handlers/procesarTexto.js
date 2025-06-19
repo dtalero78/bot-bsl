@@ -6,7 +6,6 @@ const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('../utils
 const { consultarInformacionPaciente } = require('../utils/consultarPaciente');
 const { marcarPagado } = require('../utils/marcarPagado');
 
-
 async function procesarTexto(message, res) {
     const from = message.from;
     const nombre = message.from_name || "Nombre desconocido";
@@ -28,7 +27,6 @@ async function procesarTexto(message, res) {
         const mensajePrevioUsuario = [...mensajesHistorialLimpio]
             .reverse()
             .find(m => m.from === "usuario" && m.mensaje.length > 4 && isNaN(Number(m.mensaje)))?.mensaje || "";
-
 
         const clasificacion = await fetch("https://api.openai.com/v1/chat/completions", {
             method: 'POST',
@@ -59,7 +57,8 @@ async function procesarTexto(message, res) {
             to,
             userId: from,
             nombre,
-            texto: "🔍 Un momento por favor..."
+            texto: "🔍 Un momento por favor...",
+            remitente: "sistema"  // explícito para claridad
         });
 
         if (intencion === "confirmar_cita") {
@@ -69,7 +68,8 @@ async function procesarTexto(message, res) {
                     to,
                     userId: from,
                     nombre,
-                    texto: "No encontré información médica con ese documento."
+                    texto: "No encontré información médica con ese documento.",
+                    remitente: "sistema"
                 });
             } else {
                 const datos = info[0];
@@ -107,7 +107,7 @@ async function procesarTexto(message, res) {
             (haEnviadoSoporte && /^\d+$/.test(userMessage))
         ) {
             try {
-                await marcarPagado(userMessage); // ← Aquí usas el número de documento, ¡correcto!
+                await marcarPagado(userMessage);
                 const pdfUrl = await generarPdfDesdeApi2Pdf(userMessage);
                 await sendPdf(to, pdfUrl);
 
@@ -125,18 +125,19 @@ async function procesarTexto(message, res) {
                     to,
                     userId: from,
                     nombre,
-                    texto: "Ocurrió un error al generar tu certificado. Intenta más tarde."
+                    texto: "Ocurrió un error al generar tu certificado. Intenta más tarde.",
+                    remitente: "sistema"
                 });
                 return res.status(500).json({ success: false, error: err.message });
             }
         }
 
-
         await enviarMensajeYGuardar({
             to,
             userId: from,
             nombre,
-            texto: "Gracias por la información. ¿En qué te puedo ayudar?"
+            texto: "Gracias por la información. ¿En qué te puedo ayudar?",
+            remitente: "sistema"
         });
         return res.json({ success: true, mensaje: "Intención no clara." });
     }
@@ -192,13 +193,14 @@ function limpiarDuplicados(historial) {
     });
 }
 
-async function enviarMensajeYGuardar({ to, userId, nombre, texto }) {
+// Cambiado: ahora acepta "remitente" (por defecto es "sistema")
+async function enviarMensajeYGuardar({ to, userId, nombre, texto, remitente = "sistema" }) {
     await sendMessage(to, texto);
     const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
     const historialLimpio = limpiarDuplicados(historial);
     const nuevoHistorial = limpiarDuplicados([
         ...historialLimpio,
-        { from: "sistema", mensaje: texto, timestamp: new Date().toISOString() }
+        { from: remitente, mensaje: texto, timestamp: new Date().toISOString() }
     ]);
     await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
 }
