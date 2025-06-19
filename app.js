@@ -47,6 +47,10 @@ app.post('/soporte', async (req, res) => {
         const texto = message.text?.body?.trim() || "";
         const nombre = message.from_name || "Administrador";
         const userId = (chatId || from)?.replace("@s.whatsapp.net", "");
+        const resultControl = await manejarControlBot(message);
+        if (resultControl?.detuvoBot) {
+            return res.json(resultControl); // ⬅️ DETIENE AQUÍ si aplica stop
+        }
 
         const actor = identificarActor(message);
 
