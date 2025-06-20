@@ -11,7 +11,19 @@ async function procesarTexto(message, res) {
     const nombre = message.from_name || "Nombre desconocido";
     const chatId = message.chat_id;
     const to = chatId || `${from}@s.whatsapp.net`;
-    const userMessage = message.text.body.trim();
+    const userMessage = message.text.body.trim(); // <--- Agrega esto aquí
+
+    // GUARDAR EL MENSAJE DEL USUARIO SIEMPRE
+    {
+        const { mensajes: historial = [] } = await obtenerConversacionDeWix(from);
+        const historialLimpio = limpiarDuplicados(historial);
+        const nuevoHistorial = limpiarDuplicados([
+            ...historialLimpio,
+            { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() }
+        ]);
+        await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
+    }
+
     const esNumeroId = /^\d{7,10}$/.test(userMessage);
 
     const { mensajes: mensajesHistorial = [], observaciones = "" } = await obtenerConversacionDeWix(from);
