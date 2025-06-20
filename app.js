@@ -125,6 +125,30 @@ app.post('/soporte', async (req, res) => {
 });
 
 
+app.post('/api/guardarMensaje', async (req, res) => {
+    try {
+        const { userId, nombre, mensaje, from = "sistema", timestamp } = req.body;
+        if (!userId || !mensaje) {
+            return res.status(400).json({ success: false, error: "userId y mensaje son obligatorios" });
+        }
+        // Obtén el historial actual
+        const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
+        // Agrega el nuevo mensaje
+        const nuevoHistorial = [
+            ...historial,
+            {
+                from,
+                mensaje,
+                timestamp: timestamp || new Date().toISOString()
+            }
+        ];
+        await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
+        return res.json({ success: true, mensaje: "Mensaje registrado correctamente." });
+    } catch (e) {
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
