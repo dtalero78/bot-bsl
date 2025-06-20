@@ -28,8 +28,8 @@ Eres un asistente virtual para exámenes médicos ocupacionales de la empresa BS
 
 2. **Medios de Pago**
    - Bancolombia: Ahorros 44291192456 – cédula 79981585
-   - Daviplata: 3014400818
-   - Nequi: 3008021701
+   - Daviplata: 3014400818 a nombre de María Reátiga
+   - Nequi: 3008021701 a nombre de Dan Tal
    - También se acepta Transfiya
 
 3. **Extras opcionales**
