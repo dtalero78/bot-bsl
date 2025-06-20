@@ -36,9 +36,11 @@ async function procesarTexto(message, res) {
     }
 
     if (esNumeroId) {
-        const mensajePrevioUsuario = [...mensajesHistorialLimpio]
-            .reverse()
-            .find(m => m.from === "usuario" && m.mensaje.length > 4 && isNaN(Number(m.mensaje)))?.mensaje || "";
+
+        const contextoConversacion = mensajesHistorialLimpio
+            .slice(-6) // Puedes ajustar la cantidad
+            .map(m => `${m.from}: ${m.mensaje}`)
+            .join('\n');
 
         const clasificacion = await fetch("https://api.openai.com/v1/chat/completions", {
             method: 'POST',
@@ -55,7 +57,7 @@ async function procesarTexto(message, res) {
                     },
                     {
                         role: 'user',
-                        content: mensajePrevioUsuario
+                        content: contextoConversacion
                     }
                 ],
                 max_tokens: 10
