@@ -35,6 +35,16 @@ function identificarActor(message) {
     return "usuario"; // fallback
 }
 
+function obtenerTextoMensaje(message) {
+    if (message.type === "text") {
+        return message.text?.body?.trim() || "";
+    }
+    if (message.type === "link_preview") {
+        return message.link_preview?.body?.trim() || "";
+    }
+    return "";
+}
+
 app.post('/soporte', async (req, res) => {
     try {
         const body = req.body;
@@ -44,7 +54,7 @@ app.post('/soporte', async (req, res) => {
         const message = body.messages[0];
         const from = message.from;
         const chatId = message.chat_id;
-        const texto = message.text?.body?.trim() || "";
+        const texto = obtenerTextoMensaje(message);
         const nombre = message.from_name || "Administrador";
         const userId = (chatId || from)?.replace("@s.whatsapp.net", "");
         const resultControl = await manejarControlBot(message);
