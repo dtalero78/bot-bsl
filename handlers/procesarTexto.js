@@ -19,7 +19,7 @@ async function procesarTexto(message, res) {
         const historialLimpio = limpiarDuplicados(historial);
         const nuevoHistorial = limpiarDuplicados([
             ...historialLimpio,
-            { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() }
+            { from: "usuario", mensaje: userMessage}
         ]);
         await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
     }
@@ -104,8 +104,8 @@ async function procesarTexto(message, res) {
             }
             const nuevoHistorial = limpiarDuplicados([
                 ...mensajesHistorialLimpio,
-                { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-                { from: "sistema", mensaje: "Consulta médica enviada.", timestamp: new Date().toISOString() }
+                { from: "usuario", mensaje: userMessage},
+                { from: "sistema", mensaje: "Consulta médica enviada."}
             ]);
             await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
             return res.json({ success: true, mensaje: "Consulta enviada." });
@@ -127,8 +127,8 @@ async function procesarTexto(message, res) {
 
                 const nuevoHistorial = limpiarDuplicados([
                     ...mensajesHistorialLimpio,
-                    { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-                    { from: "sistema", mensaje: "PDF generado y enviado correctamente.", timestamp: new Date().toISOString() }
+                    { from: "usuario", mensaje: userMessage},
+                    { from: "sistema", mensaje: "PDF generado y enviado correctamente."}
                 ]);
                 await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
                 return res.json({ success: true, mensaje: "PDF generado y enviado." });
@@ -187,8 +187,8 @@ async function procesarTexto(message, res) {
 
     const nuevoHistorial = limpiarDuplicados([
         ...mensajesHistorialLimpio,
-        { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() },
-        { from: "sistema", mensaje: respuestaBot, timestamp: new Date().toISOString() }
+        { from: "usuario", mensaje: userMessage},
+        { from: "sistema", mensaje: respuestaBot}
     ]);
 
     await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
@@ -214,7 +214,7 @@ async function enviarMensajeYGuardar({ to, userId, nombre, texto, remitente = "s
     const historialLimpio = limpiarDuplicados(historial);
     const nuevoHistorial = limpiarDuplicados([
         ...historialLimpio,
-        { from: remitente, mensaje: texto, timestamp: new Date().toISOString() }
+        { from: remitente, mensaje: texto}
     ]);
     await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
 }
