@@ -82,7 +82,7 @@ async function procesarTexto(message, res) {
                     to,
                     userId: from,
                     nombre,
-                    texto: "No encontré información médica con ese documento.",
+                    texto: "...transfiriendo con asesor",
                     remitente: "sistema"
                 });
             } else {
@@ -139,7 +139,7 @@ async function procesarTexto(message, res) {
                     to,
                     userId: from,
                     nombre,
-                    texto: "Ocurrió un error al generar tu certificado. Intenta más tarde.",
+                    texto: "...transfiriendo con asesor",
                     remitente: "sistema"
                 });
                 return res.status(500).json({ success: false, error: err.message });
@@ -150,7 +150,7 @@ async function procesarTexto(message, res) {
             to,
             userId: from,
             nombre,
-            texto: "Gracias por la información. ¿En qué te puedo ayudar?",
+            texto: "...transfiriendo con asesor",
             remitente: "sistema"
         });
         return res.json({ success: true, mensaje: "Intención no clara." });
