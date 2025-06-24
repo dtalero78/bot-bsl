@@ -9,12 +9,12 @@ async function generarYEnviarPdf(documento, to) {
   const url = `https://www.bsl.com.co/descarga-whp/${documento}`;
 
   try {
-    // Generar el PDF
+    // 1. Generar el PDF
     const response = await fetch(apiEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'cefeb8d4-a2e8-43a4-9a7d-f3c4e6ef1b45'
+        'Authorization': API2PDF_KEY
       },
       body: JSON.stringify({
         url,
@@ -27,7 +27,7 @@ async function generarYEnviarPdf(documento, to) {
     if (!json.success) throw new Error(json.error);
     const pdfUrl = json.pdf;
 
-    // Enviar el PDF por WhatsApp
+    // 2. Enviar el PDF por WhatsApp (Whapi)
     const sendResp = await fetch("https://gate.whapi.cloud/messages/document", {
       method: 'POST',
       headers: {
@@ -36,10 +36,8 @@ async function generarYEnviarPdf(documento, to) {
       },
       body: JSON.stringify({
         to: to,
-        media: {
-          url: pdfUrl,
-          caption: "Aquí tienes tu certificado médico en PDF."
-        }
+        media: pdfUrl, // <--- SOLO la URL aquí, no un objeto
+        caption: "Aquí tienes tu certificado médico en PDF."
       })
     });
 

@@ -123,6 +123,7 @@ async function procesarTexto(message, res) {
             try {
                 await marcarPagado(userMessage);
                 const pdfUrl = await generarPdfDesdeApi2Pdf(userMessage);
+                
                 await sendPdf(to, pdfUrl);
 
                 const nuevoHistorial = limpiarDuplicados([
