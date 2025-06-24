@@ -41,7 +41,8 @@ async function procesarImagen(message, res) {
         return res.status(500).json({ success: false, error: "No se pudo descargar la imagen de Whapi" });
     }
 
-    const buffer = await whapiRes.buffer();
+const arrayBuffer = await whapiRes.arrayBuffer();
+const buffer = Buffer.from(arrayBuffer);
     const base64Image = buffer.toString('base64');
 
     const prompt = "Extrae SOLO el valor pagado (valor de la transferencia en pesos colombianos) que aparece en este comprobante bancario. Responde solo el valor exacto, sin explicaciones, ni símbolos adicionales.";
