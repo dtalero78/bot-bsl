@@ -20,7 +20,7 @@ async function esperarPdfDisponible(pdfUrl, maxIntentos = 6, delayMs = 1000, to)
   }
   return false;
 }
-
+ 
 // Envía el PDF por Whapi. Si recibe 404, reintenta tras una nueva espera
 async function enviarPdfPorWhapiConReintento(to, pdfUrl, caption) {
   // Primer intento
