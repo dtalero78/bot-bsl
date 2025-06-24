@@ -3,11 +3,10 @@ const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fet
 const API2PDF_KEY = process.env.API2PDF_KEY;
 const WHAPI_KEY = process.env.WHAPI_KEY;
 
-// Debes importar sendMessage de tu código (ajusta la ruta según tu estructura)
-const { sendMessage } = require('./sendMessage'); // o '../utils/sendMessage'
+const { sendMessage } = require('./sendMessage'); // Ajusta la ruta según tu estructura
 
 // Espera hasta que la URL del PDF esté disponible (HEAD 200)
-async function esperarPdfDisponible(pdfUrl, maxIntentos = 6, delayMs = 1000, to) {
+async function esperarPdfDisponible(pdfUrl, maxIntentos = 6, delayMs = 1000) {
   for (let intento = 1; intento <= maxIntentos; intento++) {
     try {
       const resp = await fetch(pdfUrl, { method: "HEAD" });
@@ -15,36 +14,15 @@ async function esperarPdfDisponible(pdfUrl, maxIntentos = 6, delayMs = 1000, to)
         return true;
       }
     } catch (err) {}
-    if (to) await sendMessage(to, "🔍 Un momento por favor..."); // Nuevo: informa cada reintento
     await new Promise(res => setTimeout(res, delayMs));
   }
   return false;
 }
- 
-// Envía el PDF por Whapi. Si recibe 404, reintenta tras una nueva espera
-async function enviarPdfPorWhapiConReintento(to, pdfUrl, caption) {
-  // Primer intento
-  let sendResp = await fetch("https://gate.whapi.cloud/messages/document", {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${WHAPI_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ to, media: pdfUrl, caption })
-  });
-  let result = await sendResp.json();
 
-  if (result.sent) return result;
-
-  // Si error 404, esperar más y reintentar UNA sola vez
-  if (result.error && result.error.code === 404) {
-    console.warn("Whapi 404, esperando extra y reintentando envío PDF...", pdfUrl);
-    // Nuevo: notifica al usuario antes de reintentar
-    await sendMessage(to, "🔍 Un momento por favor...");
-    // Esperar 5 intentos de 1.5s con mensaje de espera cada uno
-    await esperarPdfDisponible(pdfUrl, 5, 1500, to);
-
-    sendResp = await fetch("https://gate.whapi.cloud/messages/document", {
+// Envía el PDF por Whapi. Si recibe 404, reintenta hasta N veces más, enviando el mensaje de espera en cada uno
+async function enviarPdfPorWhapiConReintentos(to, pdfUrl, caption, reintentos = 3, delayMs = 2500) {
+  for (let i = 0; i <= reintentos; i++) {
+    const sendResp = await fetch("https://gate.whapi.cloud/messages/document", {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${WHAPI_KEY}`,
@@ -52,12 +30,22 @@ async function enviarPdfPorWhapiConReintento(to, pdfUrl, caption) {
       },
       body: JSON.stringify({ to, media: pdfUrl, caption })
     });
-    result = await sendResp.json();
-    if (result.sent) return result;
-  }
+    const result = await sendResp.json();
 
-  // Si sigue fallando, lanza el error
-  throw new Error(result.error ? result.error.message : "Error desconocido en Whapi");
+    if (result.sent) return result;
+
+    // Solo reintentar en caso de 404
+    if (result.error && result.error.code === 404 && i < reintentos) {
+      console.warn(`Whapi 404 (intento ${i + 1}), esperando y reintentando...`);
+      await sendMessage(to, "🔍 Un momento por favor...");
+      await new Promise(res => setTimeout(res, delayMs));
+      continue;
+    }
+
+    // Otro error, o ya agotó reintentos
+    throw new Error(result.error ? result.error.message : "Error desconocido en Whapi");
+  }
+  throw new Error("Whapi: specified media not found tras reintentos.");
 }
 
 async function generarYEnviarPdf(documento, to) {
@@ -83,12 +71,11 @@ async function generarYEnviarPdf(documento, to) {
     if (!json.success) throw new Error(json.error);
     const pdfUrl = json.pdf;
 
-    // 2. Esperar a que el PDF esté disponible (6 intentos, con mensajes)
-    const pdfReady = await esperarPdfDisponible(pdfUrl, 6, 1000, to);
-    if (!pdfReady) throw new Error("El PDF aún no está disponible tras varios intentos.");
+    // 2. Esperar a que el PDF esté disponible (opcional, puede quitarse si la URL HEAD 200 sale “falsa”)
+    await esperarPdfDisponible(pdfUrl, 6, 1000);
 
-    // 3. Enviar PDF por Whapi con reintento inteligente (también con mensaje)
-    const result = await enviarPdfPorWhapiConReintento(to, pdfUrl, "Aquí tienes tu certificado médico en PDF.");
+    // 3. Enviar PDF por Whapi con hasta 3 reintentos si 404, avisando al usuario en cada intento
+    const result = await enviarPdfPorWhapiConReintentos(to, pdfUrl, "Aquí tienes tu certificado médico en PDF.", 3, 3000);
 
     console.log("✅ PDF enviado:", JSON.stringify(result, null, 2));
     return { success: true, pdfUrl };
