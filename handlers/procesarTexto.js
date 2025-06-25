@@ -51,7 +51,7 @@ async function procesarTexto(message, res) {
         }
 
         const contextoConversacion = mensajesHistorialLimpio
-            .slice(-6)
+            .slice(-25)
             .map(m => `${m.from}: ${m.mensaje}`)
             .join('\n');
 
