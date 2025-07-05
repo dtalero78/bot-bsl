@@ -189,6 +189,8 @@ async function procesarTexto(message, res) {
 
     const openaiJson = await aiRes.json();
     const respuestaBot = openaiJson.choices?.[0]?.message?.content || "No se obtuvo respuesta de OpenAI.";
+    console.log("🟢 OpenAI response:", JSON.stringify(openaiJson, null, 2));
+
 
     const nuevoHistorial = limpiarDuplicados([
         ...mensajesHistorialLimpio,
