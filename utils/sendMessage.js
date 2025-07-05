@@ -2,6 +2,13 @@ const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fet
 
 const sendMessage = async (to, body) => {
     const url = "https://gate.whapi.cloud/messages/text";
+    // Agrega este log:
+    console.log("[DEBUG] Enviando mensaje a WHAPI:", {
+        url,
+        to,
+        body,
+        WHAPI_KEY: process.env.WHAPI_KEY
+    });
     const resp = await fetch(url, {
         method: 'POST',
         headers: {
