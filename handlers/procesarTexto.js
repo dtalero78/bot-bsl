@@ -192,11 +192,6 @@ async function procesarTexto(message, res) {
             const pdfUrl = await generarPdfDesdeApi2Pdf(ultimaCedula);
             await sendPdf(to, pdfUrl);
 
-            const nuevoHistorial = limpiarDuplicados([
-                ...historialLimpio,
-                { from: "sistema", mensaje: "PDF generado y enviado correctamente." }
-            ]);
-            await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
             return res.json({ success: true });
         } catch (err) {
             console.error("Error generando o enviando PDF:", err);
