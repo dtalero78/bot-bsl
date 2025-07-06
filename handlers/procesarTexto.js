@@ -192,6 +192,9 @@ async function procesarTexto(message, res) {
             const pdfUrl = await generarPdfDesdeApi2Pdf(ultimaCedula);
             await sendPdf(to, pdfUrl);
 
+            // Limpiar la conversación en Wix (deja solo el campo mensajes vacío, NO borres el documento)
+            await guardarConversacionEnWix({ userId: from, nombre, mensajes: [] });
+
             return res.json({ success: true });
         } catch (err) {
             console.error("Error generando o enviando PDF:", err);
@@ -204,6 +207,7 @@ async function procesarTexto(message, res) {
             });
             return res.status(500).json({ success: false });
         }
+
     }
 
     // 8. Chat normal con OpenAI
