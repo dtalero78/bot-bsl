@@ -5,9 +5,9 @@ const { sendPdf, generarPdfDesdeApi2Pdf } = require('../utils/pdf');
 const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('../utils/wixAPI');
 const { consultarInformacionPaciente } = require('../utils/consultarPaciente');
 const { marcarPagado } = require('../utils/marcarPagado');
-const { esCedula, contieneTexto } = require('../utils/validaciones');
+const { esCedula } = require('../utils/validaciones');
 
-// Función de utilidad para evitar mensajes duplicados
+// Evita mensajes duplicados en el historial
 function limpiarDuplicados(historial) {
     const vistos = new Set();
     return historial.filter(m => {
@@ -18,7 +18,7 @@ function limpiarDuplicados(historial) {
     });
 }
 
-// Función para enviar y guardar mensaje en historial
+// Envía y guarda mensaje en historial
 async function enviarMensajeYGuardar({ to, userId, nombre, texto, remitente = "sistema" }) {
     await sendMessage(to, texto);
     const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
@@ -30,7 +30,7 @@ async function enviarMensajeYGuardar({ to, userId, nombre, texto, remitente = "s
     await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
 }
 
-// Función para detectar si ya se entregó el certificado PDF
+// Detecta si ya se entregó el certificado PDF
 function yaSeEntregoCertificado(historial) {
     return historial.some(m =>
         m.from === "sistema" &&
@@ -38,7 +38,7 @@ function yaSeEntregoCertificado(historial) {
     );
 }
 
-// Función para detectar si el usuario solicita explícitamente el certificado
+// Detecta si el usuario pide explícitamente el certificado
 function solicitaCertificado(texto) {
     if (!texto) return false;
     const palabrasClave = [
@@ -48,11 +48,18 @@ function solicitaCertificado(texto) {
     return palabrasClave.some(palabra => textoLower.includes(palabra));
 }
 
-
+// Detecta si el usuario pregunta por otros temas (para no bloquear la conversación)
+function esPreguntaNueva(texto) {
+    if (!texto) return false;
+    const palabrasClaveNuevas = [
+        "precio", "vale", "cuesta", "agenda", "agendar", "horario", "presencial", "virtual", "lugar", "dónde",
+        "cita", "teléfono", "laboratorio", "pago", "opciones", "médico", "ayuda", "cómo", "quiero", "necesito", "horas", "gracias"
+    ];
+    const textoLower = texto.toLowerCase();
+    return palabrasClaveNuevas.some(palabra => textoLower.includes(palabra));
+}
 
 async function procesarTexto(message, res) {
-
-
     const from = message.from;
     const nombre = message.from_name || "Nombre desconocido";
     const chatId = message.chat_id;
@@ -74,26 +81,13 @@ async function procesarTexto(message, res) {
     const { mensajes: mensajesHistorial = [], observaciones = "" } = await obtenerConversacionDeWix(from);
     const historialLimpio = limpiarDuplicados(mensajesHistorial);
 
-    // Debug: imprime el historial actual
+    // Debug
     console.log("📝 Historial recuperado de Wix para", from, ":", JSON.stringify(historialLimpio, null, 2));
-
-    // --- 👇 FILTRO PARA CONTROL DE PDF ---
-    // Detecta si el usuario pregunta por temas distintos al certificado
-    function esPreguntaNueva(texto) {
-        if (!texto) return false;
-        const palabrasClaveNuevas = [
-            "precio", "vale", "cuesta", "agenda", "agendar", "horario", "presencial", "virtual", "lugar", "dónde",
-            "cita", "teléfono", "laboratorio", "pago", "opciones", "médico", "ayuda", "cómo", "quiero", "necesito", "horas", "gracias"
-        ];
-        const textoLower = texto.toLowerCase();
-        return palabrasClaveNuevas.some(palabra => textoLower.includes(palabra));
-    }
-    console.log("DEBUG >> HISTORIAL antes del filtro:", JSON.stringify(historialLimpio, null, 2));
     console.log("DEBUG >> ¿Ya entregó certificado?", yaSeEntregoCertificado(historialLimpio));
     console.log("DEBUG >> ¿Solicita certificado?", solicitaCertificado(userMessage));
     console.log("DEBUG >> ¿Pregunta nueva?", esPreguntaNueva(userMessage));
 
-    // --- 👇 FILTRO MEJORADO PARA CONTROL DE PDF ---
+    // --- FILTRO MEJORADO PARA CONTROL DE PDF ---
     if (
         yaSeEntregoCertificado(historialLimpio) &&
         !solicitaCertificado(userMessage) &&
@@ -102,8 +96,6 @@ async function procesarTexto(message, res) {
         await sendMessage(to, "Ya tienes tu certificado. Si necesitas otra cosa, dime por favor.");
         return res.json({ success: true });
     }
-
-
 
     // --- MAPEA EL HISTORIAL INCLUYENDO ADMIN ---
     const historialParaOpenAI = historialLimpio.map(m => {
@@ -116,7 +108,6 @@ async function procesarTexto(message, res) {
         if (m.from && m.from.toLowerCase().includes("admin")) {
             return { role: "assistant", content: `[ADMINISTRADOR]: ${m.mensaje}` };
         }
-        // Para cualquier otro remitente, puedes dejarlo como "assistant"
         return { role: "assistant", content: m.mensaje };
     });
 
@@ -210,7 +201,7 @@ async function procesarTexto(message, res) {
         return res.json({ success: true });
     }
 
-    // 7. Manejo de intención: PEDIR CERTIFICADO
+    // 7. Manejo de intención: PEDIR CERTIFICADO (con chequeo reforzado)
     if (
         haEnviadoSoporte &&
         (intencion === "pedir_certificado" || intencion === "sin_intencion_clara")
@@ -234,13 +225,21 @@ async function procesarTexto(message, res) {
             remitente: "sistema"
         });
 
+        // >>>>> CHEQUEO CRÍTICO ANTES DE ENVIAR PDF <<<<<
+        const { mensajes: historialAntesDePdf = [] } = await obtenerConversacionDeWix(from);
+        const historialChequeo = limpiarDuplicados(historialAntesDePdf);
+        if (yaSeEntregoCertificado(historialChequeo)) {
+            await sendMessage(to, "Ya tienes tu certificado. Si necesitas otra cosa, dime por favor.");
+            return res.json({ success: true });
+        }
+
         try {
             await marcarPagado(ultimaCedula);
             const pdfUrl = await generarPdfDesdeApi2Pdf(ultimaCedula);
             await sendPdf(to, pdfUrl);
 
             const nuevoHistorial = limpiarDuplicados([
-                ...historialLimpio,
+                ...historialChequeo,
                 { from: "sistema", mensaje: "PDF generado y enviado correctamente." }
             ]);
             await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
