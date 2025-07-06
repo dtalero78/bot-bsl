@@ -78,13 +78,27 @@ async function procesarTexto(message, res) {
     console.log("📝 Historial recuperado de Wix para", from, ":", JSON.stringify(historialLimpio, null, 2));
 
     // --- 👇 FILTRO PARA CONTROL DE PDF ---
+    // Detecta si el usuario pregunta por temas distintos al certificado
+    function esPreguntaNueva(texto) {
+        if (!texto) return false;
+        const palabrasClaveNuevas = [
+            "precio", "vale", "cuesta", "agenda", "agendar", "horario", "presencial", "virtual", "lugar", "dónde",
+            "cita", "teléfono", "laboratorio", "pago", "opciones", "médico", "ayuda", "cómo", "quiero", "necesito", "horas", "gracias"
+        ];
+        const textoLower = texto.toLowerCase();
+        return palabrasClaveNuevas.some(palabra => textoLower.includes(palabra));
+    }
+
+    // --- 👇 FILTRO MEJORADO PARA CONTROL DE PDF ---
     if (
         yaSeEntregoCertificado(historialLimpio) &&
-        !solicitaCertificado(userMessage)
+        !solicitaCertificado(userMessage) &&
+        !esPreguntaNueva(userMessage)
     ) {
         await sendMessage(to, "Ya tienes tu certificado. Si necesitas otra cosa, dime por favor.");
         return res.json({ success: true });
     }
+
 
 
     // --- MAPEA EL HISTORIAL INCLUYENDO ADMIN ---
