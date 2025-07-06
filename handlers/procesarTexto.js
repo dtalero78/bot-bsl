@@ -30,7 +30,29 @@ async function enviarMensajeYGuardar({ to, userId, nombre, texto, remitente = "s
     await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
 }
 
+// Función para detectar si ya se entregó el certificado PDF
+function yaSeEntregoCertificado(historial) {
+    return historial.some(m =>
+        m.from === "sistema" &&
+        m.mensaje.includes("PDF generado y enviado correctamente.")
+    );
+}
+
+// Función para detectar si el usuario solicita explícitamente el certificado
+function solicitaCertificado(texto) {
+    if (!texto) return false;
+    const palabrasClave = [
+        "certificado", "pdf", "descargar", "enviar de nuevo", "mándame el certificado", "repite el certificado"
+    ];
+    const textoLower = texto.toLowerCase();
+    return palabrasClave.some(palabra => textoLower.includes(palabra));
+}
+
+
+
 async function procesarTexto(message, res) {
+
+
     const from = message.from;
     const nombre = message.from_name || "Nombre desconocido";
     const chatId = message.chat_id;
@@ -54,6 +76,16 @@ async function procesarTexto(message, res) {
 
     // Debug: imprime el historial actual
     console.log("📝 Historial recuperado de Wix para", from, ":", JSON.stringify(historialLimpio, null, 2));
+
+    // --- 👇 FILTRO PARA CONTROL DE PDF ---
+    if (
+        yaSeEntregoCertificado(historialLimpio) &&
+        !solicitaCertificado(userMessage)
+    ) {
+        await sendMessage(to, "Ya tienes tu certificado. Si necesitas otra cosa, dime por favor.");
+        return res.json({ success: true });
+    }
+
 
     // --- MAPEA EL HISTORIAL INCLUYENDO ADMIN ---
     const historialParaOpenAI = historialLimpio.map(m => {
