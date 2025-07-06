@@ -164,6 +164,23 @@ async function procesarTexto(message, res) {
     }
 
     // 7. Manejo de intención: PEDIR CERTIFICADO
+
+    // Agrega esto arriba, después de los requires/imports
+
+    async function eliminarConversacionDeWix(userId) {
+        try {
+            const resp = await fetch("https://www.bsl.com.co/_functions/eliminarConversacion", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ userId })
+            });
+            return await resp.json();
+        } catch (err) {
+            console.error("Error eliminando conversación en Wix:", err);
+            return { success: false, error: err.message };
+        }
+    }
+
     if (
         haEnviadoSoporte &&
         (intencion === "pedir_certificado" || intencion === "sin_intencion_clara")
