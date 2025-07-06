@@ -39,7 +39,7 @@ async function procesarTexto(message, res) {
 
     // 1. Guardar el mensaje del usuario
     {
-        const { mensajes: historial = [] } = await obtenerConversacionEnWix(from);
+        const { mensajes: historial = [] } = await obtenerConversacionDeWix(from);
         const historialLimpio = limpiarDuplicados(historial);
         const nuevoHistorial = limpiarDuplicados([
             ...historialLimpio,
@@ -55,6 +55,21 @@ async function procesarTexto(message, res) {
     // Debug: imprime el historial actual
     console.log("📝 Historial recuperado de Wix para", from, ":", JSON.stringify(historialLimpio, null, 2));
 
+    // --- MAPEA EL HISTORIAL INCLUYENDO ADMIN ---
+    const historialParaOpenAI = historialLimpio.map(m => {
+        if (m.from === "usuario") {
+            return { role: "user", content: m.mensaje };
+        }
+        if (m.from === "sistema") {
+            return { role: "assistant", content: m.mensaje };
+        }
+        if (m.from && m.from.toLowerCase().includes("admin")) {
+            return { role: "assistant", content: `[ADMINISTRADOR]: ${m.mensaje}` };
+        }
+        // Para cualquier otro remitente, puedes dejarlo como "assistant"
+        return { role: "assistant", content: m.mensaje };
+    });
+
     // 3. Verificar si el usuario está bloqueado
     if (String(observaciones).toLowerCase().includes("stop")) {
         return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones (silencioso)." });
@@ -64,12 +79,12 @@ async function procesarTexto(message, res) {
     const ultimaCedula = [...historialLimpio].reverse().find(m => esCedula(m.mensaje))?.mensaje || null;
     const haEnviadoSoporte = historialLimpio.some(m => /valor detectado/i.test(m.mensaje));
 
+    // 5. Clasificar intención
     const contextoConversacion = historialLimpio
         .slice(-25)
         .map(m => `${m.from}: ${m.mensaje}`)
         .join('\n');
 
-    // 5. Clasificar intención
     const clasificacion = await fetch("https://api.openai.com/v1/chat/completions", {
         method: 'POST',
         headers: {
@@ -193,7 +208,7 @@ async function procesarTexto(message, res) {
         }
     }
 
-    // 8. Chat normal con OpenAI
+    // 8. Chat normal con OpenAI (con historial incluyendo admin)
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: 'POST',
         headers: {
@@ -204,10 +219,7 @@ async function procesarTexto(message, res) {
             model: 'gpt-4o',
             messages: [
                 { role: 'system', content: promptInstitucional },
-                ...historialLimpio.map(m => ({
-                    role: m.from === "usuario" ? "user" : "assistant",
-                    content: m.mensaje
-                })),
+                ...historialParaOpenAI,
                 { role: 'user', content: userMessage }
             ],
             max_tokens: 200
