@@ -18,6 +18,7 @@ async function procesarTexto(message, res) {
     {
         const { mensajes: historial = [] } = await obtenerConversacionDeWix(from);
         const historialLimpio = limpiarDuplicados(historial);
+        console.log("📝 Historial recuperado de Wix para", from, ":", JSON.stringify(historialLimpio, null, 2));
         const nuevoHistorial = limpiarDuplicados([
             ...historialLimpio,
             { from: "usuario", mensaje: userMessage }
