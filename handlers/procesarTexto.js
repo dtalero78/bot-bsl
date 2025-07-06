@@ -88,6 +88,10 @@ async function procesarTexto(message, res) {
         const textoLower = texto.toLowerCase();
         return palabrasClaveNuevas.some(palabra => textoLower.includes(palabra));
     }
+    console.log("DEBUG >> HISTORIAL antes del filtro:", JSON.stringify(historialLimpio, null, 2));
+    console.log("DEBUG >> ¿Ya entregó certificado?", yaSeEntregoCertificado(historialLimpio));
+    console.log("DEBUG >> ¿Solicita certificado?", solicitaCertificado(userMessage));
+    console.log("DEBUG >> ¿Pregunta nueva?", esPreguntaNueva(userMessage));
 
     // --- 👇 FILTRO MEJORADO PARA CONTROL DE PDF ---
     if (
