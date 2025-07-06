@@ -202,10 +202,18 @@ async function procesarTexto(message, res) {
     }
 
     // 7. Manejo de intención: PEDIR CERTIFICADO (con chequeo reforzado)
-    if (
-        haEnviadoSoporte &&
-        (intencion === "pedir_certificado" || intencion === "sin_intencion_clara")
-    ) {
+    // 7. Manejo de intención: PEDIR CERTIFICADO
+    if (intencion === "pedir_certificado" || intencion === "sin_intencion_clara") {
+        if (!haEnviadoSoporte) {
+            await enviarMensajeYGuardar({
+                to,
+                userId: from,
+                nombre,
+                texto: "Para poder generar tu certificado, primero debes enviar el comprobante de pago.",
+                remitente: "sistema"
+            });
+            return res.json({ success: true });
+        }
         if (!ultimaCedula) {
             await enviarMensajeYGuardar({
                 to,
@@ -225,21 +233,13 @@ async function procesarTexto(message, res) {
             remitente: "sistema"
         });
 
-        // >>>>> CHEQUEO CRÍTICO ANTES DE ENVIAR PDF <<<<<
-        const { mensajes: historialAntesDePdf = [] } = await obtenerConversacionDeWix(from);
-        const historialChequeo = limpiarDuplicados(historialAntesDePdf);
-        if (yaSeEntregoCertificado(historialChequeo)) {
-            await sendMessage(to, "Ya tienes tu certificado. Si necesitas otra cosa, dime por favor.");
-            return res.json({ success: true });
-        }
-
         try {
             await marcarPagado(ultimaCedula);
             const pdfUrl = await generarPdfDesdeApi2Pdf(ultimaCedula);
             await sendPdf(to, pdfUrl);
 
             const nuevoHistorial = limpiarDuplicados([
-                ...historialChequeo,
+                ...historialLimpio,
                 { from: "sistema", mensaje: "PDF generado y enviado correctamente." }
             ]);
             await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
@@ -256,6 +256,7 @@ async function procesarTexto(message, res) {
             return res.status(500).json({ success: false });
         }
     }
+
 
     // 8. Chat normal con OpenAI (con historial incluyendo admin)
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
