@@ -32,22 +32,22 @@ function yaSeEntregoCertificado(historial) {
 // 🆕 Función para detectar el contexto de la conversación
 function detectarContextoConversacion(historial) {
     const ultimosMessages = historial.slice(-10);
-    
+   
     // Buscar si hay un comprobante de pago en el historial reciente
-    const hayComprobantePago = ultimosMessages.some(m => 
+    const hayComprobantePago = ultimosMessages.some(m =>
         m.mensaje.includes("Comprobante de pago recibido") ||
         m.mensaje.includes("valor detectado") ||
         m.mensaje.includes("Valor detectado")
     );
-    
+   
     // Buscar si hay una confirmación de cita en el historial reciente
-    const hayConfirmacionCita = ultimosMessages.some(m => 
+    const hayConfirmacionCita = ultimosMessages.some(m =>
         m.mensaje.includes("Confirmación de cita recibida") ||
         m.mensaje.includes("confirmación de cita")
     );
-    
+   
     // Buscar si hay un listado de exámenes
-    const hayListadoExamenes = ultimosMessages.some(m => 
+    const hayListadoExamenes = ultimosMessages.some(m =>
         m.mensaje.includes("Listado de exámenes recibido") ||
         m.mensaje.includes("orden médica")
     );
@@ -56,8 +56,8 @@ function detectarContextoConversacion(historial) {
         hayComprobantePago,
         hayConfirmacionCita,
         hayListadoExamenes,
-        contexto: hayComprobantePago ? "pago" : 
-                 hayConfirmacionCita ? "consulta_cita" : 
+        contexto: hayComprobantePago ? "pago" :
+                 hayConfirmacionCita ? "consulta_cita" :
                  hayListadoExamenes ? "examenes" : "general"
     };
 }
@@ -165,7 +165,7 @@ async function procesarTexto(message, res) {
     // CONTEXTO: Usuario envió confirmación de cita + cédula
     if (contextoInfo.contexto === "consulta_cita" && ultimaCedula) {
         console.log("📅 Procesando consulta de cita con cédula:", ultimaCedula);
-        
+       
         await enviarMensajeYGuardar({
             to,
             userId: from,
@@ -200,14 +200,13 @@ async function procesarTexto(message, res) {
                     ? new Date(datos.fechaAtencion).toLocaleString("es-CO", opcionesFecha).replace(',', ' a las')
                     : "No registrada";
                 const resumen = `📄 Información registrada:\n👤 ${datos.primerNombre} ${datos.primerApellido}\n📅 Fecha consulta: ${fechaAtencion}\n📲 Celular: ${datos.celular || "No disponible"}`;
+               
+                await sendMessage(to, resumen);
                 
-                await enviarMensajeYGuardar({
-                    to,
-                    userId: from,
-                    nombre,
-                    texto: resumen,
-                    remitente: "sistema"
-                });
+                // 🆕 ELIMINAR CONVERSACIÓN después de enviar la información de la cita
+                await eliminarConversacionDeWix(from);
+                console.log("🗑️ Historial eliminado después de consultar cita para:", from);
+                
                 return res.json({ success: true });
             }
         } catch (err) {
@@ -226,7 +225,7 @@ async function procesarTexto(message, res) {
     // CONTEXTO: Usuario envió comprobante de pago + cédula  
     if (contextoInfo.contexto === "pago" && ultimaCedula) {
         console.log("💰 Procesando generación de certificado con cédula:", ultimaCedula);
-        
+       
         await enviarMensajeYGuardar({
             to,
             userId: from,
@@ -302,13 +301,12 @@ async function procesarTexto(message, res) {
                 : "No registrada";
             const resumen = `📄 Información registrada:\n👤 ${datos.primerNombre} ${datos.primerApellido}\n📅 Fecha consulta: ${fechaAtencion}\n📲 Celular: ${datos.celular || "No disponible"}`;
             await sendMessage(to, resumen);
+            
+            // 🆕 ELIMINAR CONVERSACIÓN después de enviar la información de la cita
+            await eliminarConversacionDeWix(from);
+            console.log("🗑️ Historial eliminado después de consultar cita para:", from);
         }
 
-        const nuevoHistorial = limpiarDuplicados([
-            ...historialLimpio,
-            { from: "sistema", mensaje: "Consulta médica enviada." }
-        ]);
-        await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
         return res.json({ success: true });
     }
 
@@ -353,7 +351,7 @@ async function procesarTexto(message, res) {
         ...historialLimpio,
         { from: "sistema", mensaje: respuestaBot }
     ]);
-    await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
+    await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
     await sendMessage(to, respuestaBot);
 
     return res.json({ success: true, respuesta: respuestaBot });
