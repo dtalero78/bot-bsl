@@ -5,9 +5,9 @@ const { sendPdf, generarPdfDesdeApi2Pdf } = require('../utils/pdf');
 const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('../utils/wixAPI');
 const { consultarInformacionPaciente } = require('../utils/consultarPaciente');
 const { marcarPagado } = require('../utils/marcarPagado');
-const { esCedula } = require('../utils/validaciones');
+const { esCedula, contieneTexto } = require('../utils/validaciones');
 
-// Evita mensajes duplicados en el historial
+// Función de utilidad para evitar mensajes duplicados
 function limpiarDuplicados(historial) {
     const vistos = new Set();
     return historial.filter(m => {
@@ -18,7 +18,18 @@ function limpiarDuplicados(historial) {
     });
 }
 
-// Envía y guarda mensaje en historial
+// Nueva función para evitar que se repita el envío del certificado
+function yaSeEntregoCertificado(historial) {
+    return historial.slice(-5).some(m =>
+        m.from === "sistema" &&
+        (
+            m.mensaje.includes("PDF generado y enviado correctamente.") ||
+            m.mensaje.includes("Aquí tienes tu certificado médico en PDF")
+        )
+    );
+}
+
+// Función para enviar y guardar mensaje en historial
 async function enviarMensajeYGuardar({ to, userId, nombre, texto, remitente = "sistema" }) {
     await sendMessage(to, texto);
     const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
@@ -28,35 +39,6 @@ async function enviarMensajeYGuardar({ to, userId, nombre, texto, remitente = "s
         { from: remitente, mensaje: texto }
     ]);
     await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
-}
-
-// Detecta si ya se entregó el certificado PDF
-function yaSeEntregoCertificado(historial) {
-    return historial.some(m =>
-        m.from === "sistema" &&
-        m.mensaje.includes("PDF generado y enviado correctamente.")
-    );
-}
-
-// Detecta si el usuario pide explícitamente el certificado
-function solicitaCertificado(texto) {
-    if (!texto) return false;
-    const palabrasClave = [
-        "certificado", "pdf", "descargar", "enviar de nuevo", "mándame el certificado", "repite el certificado"
-    ];
-    const textoLower = texto.toLowerCase();
-    return palabrasClave.some(palabra => textoLower.includes(palabra));
-}
-
-// Detecta si el usuario pregunta por otros temas (para no bloquear la conversación)
-function esPreguntaNueva(texto) {
-    if (!texto) return false;
-    const palabrasClaveNuevas = [
-        "precio", "vale", "cuesta", "agenda", "agendar", "horario", "presencial", "virtual", "lugar", "dónde",
-        "cita", "teléfono", "laboratorio", "pago", "opciones", "médico", "ayuda", "cómo", "quiero", "necesito", "horas", "gracias"
-    ];
-    const textoLower = texto.toLowerCase();
-    return palabrasClaveNuevas.some(palabra => textoLower.includes(palabra));
 }
 
 async function procesarTexto(message, res) {
@@ -81,35 +63,15 @@ async function procesarTexto(message, res) {
     const { mensajes: mensajesHistorial = [], observaciones = "" } = await obtenerConversacionDeWix(from);
     const historialLimpio = limpiarDuplicados(mensajesHistorial);
 
-    // Debug
+    // Debug: imprime el historial actual
     console.log("📝 Historial recuperado de Wix para", from, ":", JSON.stringify(historialLimpio, null, 2));
-    console.log("DEBUG >> ¿Ya entregó certificado?", yaSeEntregoCertificado(historialLimpio));
-    console.log("DEBUG >> ¿Solicita certificado?", solicitaCertificado(userMessage));
-    console.log("DEBUG >> ¿Pregunta nueva?", esPreguntaNueva(userMessage));
 
-    // --- FILTRO MEJORADO PARA CONTROL DE PDF ---
-    if (
-        yaSeEntregoCertificado(historialLimpio) &&
-        !solicitaCertificado(userMessage) &&
-        !esPreguntaNueva(userMessage)
-    ) {
+    // --- FILTRO para evitar repetir el certificado ---
+    if (yaSeEntregoCertificado(historialLimpio)) {
         await sendMessage(to, "Ya tienes tu certificado. Si necesitas otra cosa, dime por favor.");
-        return res.json({ success: true });
+        return res.json({ success: true, mensaje: "Certificado ya entregado." });
     }
-
-    // --- MAPEA EL HISTORIAL INCLUYENDO ADMIN ---
-    const historialParaOpenAI = historialLimpio.map(m => {
-        if (m.from === "usuario") {
-            return { role: "user", content: m.mensaje };
-        }
-        if (m.from === "sistema") {
-            return { role: "assistant", content: m.mensaje };
-        }
-        if (m.from && m.from.toLowerCase().includes("admin")) {
-            return { role: "assistant", content: `[ADMINISTRADOR]: ${m.mensaje}` };
-        }
-        return { role: "assistant", content: m.mensaje };
-    });
+    // -------------------------------------------------
 
     // 3. Verificar si el usuario está bloqueado
     if (String(observaciones).toLowerCase().includes("stop")) {
@@ -120,12 +82,12 @@ async function procesarTexto(message, res) {
     const ultimaCedula = [...historialLimpio].reverse().find(m => esCedula(m.mensaje))?.mensaje || null;
     const haEnviadoSoporte = historialLimpio.some(m => /valor detectado/i.test(m.mensaje));
 
-    // 5. Clasificar intención
     const contextoConversacion = historialLimpio
         .slice(-25)
         .map(m => `${m.from}: ${m.mensaje}`)
         .join('\n');
 
+    // 5. Clasificar intención
     const clasificacion = await fetch("https://api.openai.com/v1/chat/completions", {
         method: 'POST',
         headers: {
@@ -201,19 +163,11 @@ async function procesarTexto(message, res) {
         return res.json({ success: true });
     }
 
-    // 7. Manejo de intención: PEDIR CERTIFICADO (con chequeo reforzado)
     // 7. Manejo de intención: PEDIR CERTIFICADO
-    if (intencion === "pedir_certificado" || intencion === "sin_intencion_clara") {
-        if (!haEnviadoSoporte) {
-            await enviarMensajeYGuardar({
-                to,
-                userId: from,
-                nombre,
-                texto: "Para poder generar tu certificado, primero debes enviar el comprobante de pago.",
-                remitente: "sistema"
-            });
-            return res.json({ success: true });
-        }
+    if (
+        haEnviadoSoporte &&
+        (intencion === "pedir_certificado" || intencion === "sin_intencion_clara")
+    ) {
         if (!ultimaCedula) {
             await enviarMensajeYGuardar({
                 to,
@@ -257,8 +211,7 @@ async function procesarTexto(message, res) {
         }
     }
 
-
-    // 8. Chat normal con OpenAI (con historial incluyendo admin)
+    // 8. Chat normal con OpenAI
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: 'POST',
         headers: {
@@ -269,7 +222,10 @@ async function procesarTexto(message, res) {
             model: 'gpt-4o',
             messages: [
                 { role: 'system', content: promptInstitucional },
-                ...historialParaOpenAI,
+                ...historialLimpio.map(m => ({
+                    role: m.from === "usuario" ? "user" : "assistant",
+                    content: m.mensaje
+                })),
                 { role: 'user', content: userMessage }
             ],
             max_tokens: 200
