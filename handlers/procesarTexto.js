@@ -192,9 +192,8 @@ async function procesarTexto(message, res) {
             const pdfUrl = await generarPdfDesdeApi2Pdf(ultimaCedula);
             await sendPdf(to, pdfUrl);
 
-            // Limpiar la conversación en Wix (deja solo el campo mensajes vacío, NO borres el documento)
-            await guardarConversacionEnWix({ userId: from, nombre, mensajes: [] });
-
+            // Elimina la conversación de Wix después de enviar el certificado
+            await eliminarConversacionDeWix(from);
             return res.json({ success: true });
         } catch (err) {
             console.error("Error generando o enviando PDF:", err);
