@@ -7,6 +7,40 @@ const { consultarInformacionPaciente } = require('../utils/consultarPaciente');
 const { marcarPagado } = require('../utils/marcarPagado');
 const { esCedula, contieneTexto } = require('../utils/validaciones');
 
+// Función de utilidad para evitar mensajes duplicados
+function limpiarDuplicados(historial) {
+    const vistos = new Set();
+    return historial.filter(m => {
+        const clave = `${m.from}|${m.mensaje}`;
+        if (vistos.has(clave)) return false;
+        vistos.add(clave);
+        return true;
+    });
+}
+
+// Nueva función para evitar que se repita el envío del certificado
+function yaSeEntregoCertificado(historial) {
+    return historial.slice(-5).some(m =>
+        m.from === "sistema" &&
+        (
+            m.mensaje.includes("PDF generado y enviado correctamente.") ||
+            m.mensaje.includes("Aquí tienes tu certificado médico en PDF")
+        )
+    );
+}
+
+// Función para enviar y guardar mensaje en historial
+async function enviarMensajeYGuardar({ to, userId, nombre, texto, remitente = "sistema" }) {
+    await sendMessage(to, texto);
+    const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
+    const historialLimpio = limpiarDuplicados(historial);
+    const nuevoHistorial = limpiarDuplicados([
+        ...historialLimpio,
+        { from: remitente, mensaje: texto }
+    ]);
+    await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
+}
+
 async function procesarTexto(message, res) {
     const from = message.from;
     const nombre = message.from_name || "Nombre desconocido";
@@ -18,7 +52,6 @@ async function procesarTexto(message, res) {
     {
         const { mensajes: historial = [] } = await obtenerConversacionDeWix(from);
         const historialLimpio = limpiarDuplicados(historial);
-        console.log("📝 Historial recuperado de Wix para", from, ":", JSON.stringify(historialLimpio, null, 2));
         const nuevoHistorial = limpiarDuplicados([
             ...historialLimpio,
             { from: "usuario", mensaje: userMessage }
@@ -26,24 +59,35 @@ async function procesarTexto(message, res) {
         await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
     }
 
-    // 2. Verificar si el usuario está bloqueado
+    // 2. Obtener historial actualizado y limpiar duplicados
     const { mensajes: mensajesHistorial = [], observaciones = "" } = await obtenerConversacionDeWix(from);
-    const mensajesHistorialLimpio = limpiarDuplicados(mensajesHistorial);
+    const historialLimpio = limpiarDuplicados(mensajesHistorial);
 
+    // Debug: imprime el historial actual
+    console.log("📝 Historial recuperado de Wix para", from, ":", JSON.stringify(historialLimpio, null, 2));
+
+    // --- FILTRO para evitar repetir el certificado ---
+    if (yaSeEntregoCertificado(historialLimpio)) {
+        await sendMessage(to, "Ya tienes tu certificado. Si necesitas otra cosa, dime por favor.");
+        return res.json({ success: true, mensaje: "Certificado ya entregado." });
+    }
+    // -------------------------------------------------
+
+    // 3. Verificar si el usuario está bloqueado
     if (String(observaciones).toLowerCase().includes("stop")) {
         return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones (silencioso)." });
     }
 
-    // 3. Preparar contexto
-    const ultimaCedula = [...mensajesHistorialLimpio].reverse().find(m => esCedula(m.mensaje))?.mensaje || null;
-    const haEnviadoSoporte = mensajesHistorialLimpio.some(m => /valor detectado/i.test(m.mensaje));
+    // 4. Preparar contexto
+    const ultimaCedula = [...historialLimpio].reverse().find(m => esCedula(m.mensaje))?.mensaje || null;
+    const haEnviadoSoporte = historialLimpio.some(m => /valor detectado/i.test(m.mensaje));
 
-    const contextoConversacion = mensajesHistorialLimpio
+    const contextoConversacion = historialLimpio
         .slice(-25)
         .map(m => `${m.from}: ${m.mensaje}`)
         .join('\n');
 
-    // 4. Clasificar intención
+    // 5. Clasificar intención
     const clasificacion = await fetch("https://api.openai.com/v1/chat/completions", {
         method: 'POST',
         headers: {
@@ -63,7 +107,7 @@ async function procesarTexto(message, res) {
     const resultadoClasificacion = await clasificacion.json();
     const intencion = resultadoClasificacion?.choices?.[0]?.message?.content?.trim() || "sin_intencion_clara";
 
-    // 5. Manejo de intención: CONFIRMAR CITA
+    // 6. Manejo de intención: CONFIRMAR CITA
     if (intencion === "confirmar_cita") {
         if (!ultimaCedula) {
             await enviarMensajeYGuardar({
@@ -112,14 +156,14 @@ async function procesarTexto(message, res) {
         }
 
         const nuevoHistorial = limpiarDuplicados([
-            ...mensajesHistorialLimpio,
+            ...historialLimpio,
             { from: "sistema", mensaje: "Consulta médica enviada." }
         ]);
         await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
         return res.json({ success: true });
     }
 
-    // 6. Manejo de intención: PEDIR CERTIFICADO
+    // 7. Manejo de intención: PEDIR CERTIFICADO
     if (
         haEnviadoSoporte &&
         (intencion === "pedir_certificado" || intencion === "sin_intencion_clara")
@@ -149,7 +193,7 @@ async function procesarTexto(message, res) {
             await sendPdf(to, pdfUrl);
 
             const nuevoHistorial = limpiarDuplicados([
-                ...mensajesHistorialLimpio,
+                ...historialLimpio,
                 { from: "sistema", mensaje: "PDF generado y enviado correctamente." }
             ]);
             await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
@@ -167,7 +211,7 @@ async function procesarTexto(message, res) {
         }
     }
 
-    // 7. Chat normal con OpenAI
+    // 8. Chat normal con OpenAI
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: 'POST',
         headers: {
@@ -178,7 +222,7 @@ async function procesarTexto(message, res) {
             model: 'gpt-4o',
             messages: [
                 { role: 'system', content: promptInstitucional },
-                ...mensajesHistorialLimpio.map(m => ({
+                ...historialLimpio.map(m => ({
                     role: m.from === "usuario" ? "user" : "assistant",
                     content: m.mensaje
                 })),
@@ -192,36 +236,14 @@ async function procesarTexto(message, res) {
     const respuestaBot = openaiJson.choices?.[0]?.message?.content || "No se obtuvo respuesta de OpenAI.";
     console.log("🟢 OpenAI response:", JSON.stringify(openaiJson, null, 2));
 
-
     const nuevoHistorial = limpiarDuplicados([
-        ...mensajesHistorialLimpio,
+        ...historialLimpio,
         { from: "sistema", mensaje: respuestaBot }
     ]);
     await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
     await sendMessage(to, respuestaBot);
 
     return res.json({ success: true, respuesta: respuestaBot });
-}
-
-function limpiarDuplicados(historial) {
-    const vistos = new Set();
-    return historial.filter(m => {
-        const clave = `${m.from}|${m.mensaje}`;
-        if (vistos.has(clave)) return false;
-        vistos.add(clave);
-        return true;
-    });
-}
-
-async function enviarMensajeYGuardar({ to, userId, nombre, texto, remitente = "sistema" }) {
-    await sendMessage(to, texto);
-    const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
-    const historialLimpio = limpiarDuplicados(historial);
-    const nuevoHistorial = limpiarDuplicados([
-        ...historialLimpio,
-        { from: remitente, mensaje: texto }
-    ]);
-    await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
 }
 
 module.exports = { procesarTexto };
