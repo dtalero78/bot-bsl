@@ -18,17 +18,6 @@ function limpiarDuplicados(historial) {
     });
 }
 
-// Nueva función para evitar que se repita el envío del certificado
-function yaSeEntregoCertificado(historial) {
-    return historial.slice(-5).some(m =>
-        m.from === "sistema" &&
-        (
-            m.mensaje.includes("PDF generado y enviado correctamente.") ||
-            m.mensaje.includes("Aquí tienes tu certificado médico en PDF")
-        )
-    );
-}
-
 // Función para enviar y guardar mensaje en historial
 async function enviarMensajeYGuardar({ to, userId, nombre, texto, remitente = "sistema" }) {
     await sendMessage(to, texto);
@@ -50,7 +39,7 @@ async function procesarTexto(message, res) {
 
     // 1. Guardar el mensaje del usuario
     {
-        const { mensajes: historial = [] } = await obtenerConversacionDeWix(from);
+        const { mensajes: historial = [] } = await obtenerConversacionEnWix(from);
         const historialLimpio = limpiarDuplicados(historial);
         const nuevoHistorial = limpiarDuplicados([
             ...historialLimpio,
@@ -65,13 +54,6 @@ async function procesarTexto(message, res) {
 
     // Debug: imprime el historial actual
     console.log("📝 Historial recuperado de Wix para", from, ":", JSON.stringify(historialLimpio, null, 2));
-
-    // --- FILTRO para evitar repetir el certificado ---
-    if (yaSeEntregoCertificado(historialLimpio)) {
-        await sendMessage(to, "Ya tienes tu certificado. Si necesitas otra cosa, dime por favor.");
-        return res.json({ success: true, mensaje: "Certificado ya entregado." });
-    }
-    // -------------------------------------------------
 
     // 3. Verificar si el usuario está bloqueado
     if (String(observaciones).toLowerCase().includes("stop")) {
