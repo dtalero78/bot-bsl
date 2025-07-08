@@ -173,10 +173,10 @@ async function procesarImagen(message, res) {
             if (!valorEsValido) {
                 mensajeRespuesta = "No pude identificar el valor del comprobante. Por favor envía una imagen clara del soporte de pago.";
             } else {
-                mensajeRespuesta = `Hemos recibido tu comprobante. Valor detectado: $${valorNumerico}`;
+                mensajeRespuesta = `Hemos recibido tu comprobante`;
                 // Continuar con lógica de solicitar documento
                 await sendMessage(to, mensajeRespuesta);
-                await sendMessage(to, "¿Cuál es tu número de documento para generar tu certificado PDF?");
+                await sendMessage(to, "¿Cuál es tu número de documento?");
             }
             break;
 
