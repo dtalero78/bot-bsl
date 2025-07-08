@@ -88,6 +88,17 @@ async function eliminarConversacionDeWix(userId) {
     }
 }
 
+/**
+ * Verifica si el último mensaje del sistema fue "Verifica los datos de tu certificado"
+ */
+function ultimoMensajeFueVerificarDatos(historial) {
+    const mensajesSistema = historial.filter(m => m.from === "sistema");
+    if (mensajesSistema.length === 0) return false;
+    
+    const ultimoMensajeSistema = mensajesSistema[mensajesSistema.length - 1];
+    return ultimoMensajeSistema.mensaje === "Verifica los datos de tu certificado";
+}
+
 async function procesarTexto(message, res) {
     const from = message.from;
     const nombre = message.from_name || "Nombre desconocido";
@@ -125,11 +136,51 @@ async function procesarTexto(message, res) {
         return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones (silencioso)." });
     }
 
-    // 4. 🆕 Detectar contexto de la conversación
+    // 4. 🆕 Verificar si debe preguntar por aprobación del certificado
+    if (ultimoMensajeFueVerificarDatos(historialLimpio)) {
+        console.log("📋 Detectado mensaje de verificación de certificado");
+        
+        // Buscar la última cédula en el historial
+        const ultimaCedulaVerificacion = [...historialLimpio].reverse().find(m => esCedula(m.mensaje))?.mensaje || null;
+        
+        if (ultimaCedulaVerificacion) {
+            try {
+                const infoPaciente = await consultarInformacionPaciente(ultimaCedulaVerificacion);
+                
+                if (infoPaciente && infoPaciente.length > 0) {
+                    const paciente = infoPaciente[0];
+                    
+                    // Verificar condiciones: atendido = "ATENDIDO" y pvEstado vacío
+                    if (paciente.atendido === "ATENDIDO" && (!paciente.pvEstado || paciente.pvEstado === "")) {
+                        console.log("✅ Paciente atendido y sin pvEstado, preguntando aprobación");
+                        
+                        await enviarMensajeYGuardar({
+                            to,
+                            userId: from,
+                            nombre,
+                            texto: "¿Apruebas tu certificado?",
+                            remitente: "sistema"
+                        });
+                        
+                        return res.json({ success: true, mensaje: "Pregunta de aprobación enviada" });
+                    } else {
+                        console.log("❌ No cumple condiciones para aprobación:", {
+                            atendido: paciente.atendido,
+                            pvEstado: paciente.pvEstado
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error("Error verificando estado del paciente:", err);
+            }
+        }
+    }
+
+    // 5. 🆕 Detectar contexto de la conversación
     const contextoInfo = detectarContextoConversacion(historialLimpio);
     console.log("🎯 Contexto detectado:", contextoInfo);
 
-    // 5. Preparar contexto
+    // 6. Preparar contexto
     const ultimaCedula = [...historialLimpio].reverse().find(m => esCedula(m.mensaje))?.mensaje || null;
 
     const contextoConversacion = historialLimpio
@@ -137,7 +188,7 @@ async function procesarTexto(message, res) {
         .map(m => `${m.from}: ${m.mensaje}`)
         .join('\n');
 
-    // 6. Clasificar intención
+    // 7. Clasificar intención
     const clasificacion = await fetch("https://api.openai.com/v1/chat/completions", {
         method: 'POST',
         headers: {
@@ -160,7 +211,7 @@ async function procesarTexto(message, res) {
     console.log("🎯 Intención clasificada:", intencion);
     console.log("🎯 Contexto:", contextoInfo.contexto);
 
-    // 7. 🆕 MANEJO ESPECÍFICO POR CONTEXTO
+    // 8. 🆕 MANEJO ESPECÍFICO POR CONTEXTO
 
     // CONTEXTO: Usuario envió confirmación de cita + cédula
     if (contextoInfo.contexto === "consulta_cita" && ultimaCedula) {
@@ -255,7 +306,7 @@ async function procesarTexto(message, res) {
         }
     }
 
-    // 8. Manejo de intención: CONFIRMAR CITA (cuando no hay contexto específico)
+    // 9. Manejo de intención: CONFIRMAR CITA (cuando no hay contexto específico)
     if (intencion === "confirmar_cita") {
         if (!ultimaCedula) {
             await enviarMensajeYGuardar({
@@ -310,7 +361,7 @@ async function procesarTexto(message, res) {
         return res.json({ success: true });
     }
 
-    // 9. Si el usuario solo envía cédula sin contexto, preguntar qué necesita
+    // 10. Si el usuario solo envía cédula sin contexto, preguntar qué necesita
     if (esCedula(userMessage) && contextoInfo.contexto === "general") {
         await enviarMensajeYGuardar({
             to,
@@ -322,7 +373,7 @@ async function procesarTexto(message, res) {
         return res.json({ success: true });
     }
 
-    // 10. Chat normal con OpenAI
+    // 11. Chat normal con OpenAI
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: 'POST',
         headers: {

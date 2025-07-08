@@ -1,3 +1,0 @@
-git add .
-git commit -m "clasificar la imagen"
-git push
