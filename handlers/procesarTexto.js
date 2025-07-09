@@ -89,14 +89,14 @@ async function eliminarConversacionDeWix(userId) {
 }
 
 /**
- * Verifica si el último mensaje del sistema fue "Verifica los datos de tu certificado"
+ * Verifica si el último mensaje del ADMIN fue "Verifica los datos de tu certificado"
  */
 function ultimoMensajeFueVerificarDatos(historial) {
-    const mensajesSistema = historial.filter(m => m.from === "sistema");
-    if (mensajesSistema.length === 0) return false;
+    const mensajesAdmin = historial.filter(m => m.from === "admin");
+    if (mensajesAdmin.length === 0) return false;
     
-    const ultimoMensajeSistema = mensajesSistema[mensajesSistema.length - 1];
-    return ultimoMensajeSistema.mensaje === "Verifica los datos de tu certificado";
+    const ultimoMensajeAdmin = mensajesAdmin[mensajesAdmin.length - 1];
+    return ultimoMensajeAdmin.mensaje === "Verifica los datos de tu certificado";
 }
 
 async function procesarTexto(message, res) {
@@ -138,7 +138,7 @@ async function procesarTexto(message, res) {
 
     // 4. 🆕 Verificar si debe preguntar por aprobación del certificado
     if (ultimoMensajeFueVerificarDatos(historialLimpio)) {
-        console.log("📋 Detectado mensaje de verificación de certificado");
+        console.log("📋 Detectado mensaje de verificación de certificado del ADMIN");
         
         // Buscar la última cédula en el historial
         const ultimaCedulaVerificacion = [...historialLimpio].reverse().find(m => esCedula(m.mensaje))?.mensaje || null;
