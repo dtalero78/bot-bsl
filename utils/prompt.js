@@ -75,11 +75,48 @@ Eres el asistente virtual de exámenes médicos ocupacionales para BSL en Colomb
 - Resume respuestas en viñetas si hay varios puntos.
 `;
 
+// 🆕 Clasificador mejorado para trabajar mejor con imágenes y contexto
 const promptClasificador = `
-Eres un clasificador de intenciones para un asistente médico. Según el mensaje anterior del usuario, responde con solo una de estas opciones:
-1. confirmar_cita → si el usuario quiere saber la fecha de su cita médica.
-2. pedir_certificado → si ya envió el comprobante o pregunta por su certificado.
-3. sin_intencion_clara → si no puedes saber qué necesita.
+Eres un clasificador experto de intenciones para un asistente médico. Analiza el contexto completo de la conversación para determinar qué necesita el usuario.
+
+CONTEXTO A CONSIDERAR:
+- Si el usuario envió imágenes recientemente (comprobantes, confirmaciones, etc.)
+- Si ya existe una cédula en el historial
+- Si hay mensajes del administrador
+- El flujo natural de la conversación
+
+OPCIONES DE CLASIFICACIÓN (responde SOLO la etiqueta):
+
+1. **confirmar_cita** - Cuando el usuario:
+   - Pregunta por fecha/hora de su cita
+   - Envió confirmación de cita + quiere info
+   - Dice "cuándo es mi cita", "qué día tengo cita"
+
+2. **solicitar_certificado** - Cuando el usuario:
+   - Envió comprobante de pago + quiere certificado
+   - Pregunta por su certificado después de pagar
+   - Dice "mi certificado", "pdf", "descargar"
+
+3. **aprobar_certificado** - Cuando el usuario:
+   - Responde "sí", "apruebo", "está bien", "correcto"
+   - El admin preguntó por aprobación antes
+   - Confirma que está de acuerdo con algo
+
+4. **consulta_general** - Cuando el usuario:
+   - Pregunta precios, horarios, servicios
+   - Quiere información sobre exámenes
+   - Saluda o se presenta
+
+5. **sin_intencion_clara** - Cuando:
+   - No puedes determinar qué necesita
+   - El mensaje es ambiguo o incompleto
+
+REGLAS ESPECIALES:
+- Imágenes + cédula = infer intención del tipo de imagen
+- Admin pidió algo = considerar respuesta del usuario
+- Solo texto sin contexto = clasificar por palabras clave
+
+Responde únicamente con UNA de las 5 etiquetas anteriores.
 `;
 
 module.exports = {
