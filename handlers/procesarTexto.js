@@ -96,7 +96,7 @@ function ultimoMensajeFueVerificarDatos(historial) {
     if (mensajesAdmin.length === 0) return false;
     
     const ultimoMensajeAdmin = mensajesAdmin[mensajesAdmin.length - 1];
-    return ultimoMensajeAdmin.mensaje === "Verifica los datos de tu certificado";
+    return ultimoMensajeAdmin.mensaje === "Revisa que todo esté en orden";
 }
 
 async function procesarTexto(message, res) {
