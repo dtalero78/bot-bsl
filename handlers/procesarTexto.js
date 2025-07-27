@@ -29,8 +29,22 @@ function yaSeEntregoCertificado(historial) {
     );
 }
 
-// 🆕 Función mejorada para detectar el contexto de la conversación
-function detectarContextoConversacion(historial) {
+// 🆕 Función mejorada para detectar si ya se enviaron datos de pago recientemente
+function yaSeEnviaronDatosPago(historial) {
+    const ultimosMessages = historial.slice(-5);
+    return ultimosMessages.some(m =>
+        m.from === "sistema" && 
+        (m.mensaje.includes("💳") ||
+         m.mensaje.includes("Datos para el pago") ||
+         m.mensaje.includes("Bancolombia: Ahorros 44291192456") ||
+         m.mensaje.includes("Bancolombia:** Ahorros 44291192456") ||
+         m.mensaje.includes("Daviplata:** 3014400818") ||
+         m.mensaje.includes("Nequi:** 3008021701"))
+    );
+}
+
+// 🆕 Función mejorada para detectar el contexto usando mensajes Y observaciones
+function detectarContextoConversacion(historial, observaciones = "") {
     const ultimosMessages = historial.slice(-15); // Más contexto
   
     // Buscar si hay un comprobante de pago en el historial reciente
@@ -65,15 +79,30 @@ function detectarContextoConversacion(historial) {
         m.mensaje.includes("Información registrada:")
     );
 
+    // 🆕 Detectar si ya se enviaron datos de pago (mejorado)
+    const yaSeEnviaronDatos = yaSeEnviaronDatosPago(historial);
+
+    // 🆕 Leer contexto adicional de observaciones de Wix
+    const observacionesContext = {
+        tienePago: observaciones.toLowerCase().includes("pagado") || observaciones.toLowerCase().includes("pago"),
+        estaAtendido: observaciones.toLowerCase().includes("atendido"),
+        tieneCita: observaciones.toLowerCase().includes("cita") || observaciones.toLowerCase().includes("agendado"),
+        bloqueado: observaciones.toLowerCase().includes("stop")
+    };
+
     return {
         hayComprobantePago,
         hayConfirmacionCita,
         hayListadoExamenes,
         yaSeConsultoInfo,
+        yaSeEnviaronDatos, // 🆕 NUEVO
+        observacionesContext, // 🆕 NUEVO
         contexto: hayComprobantePago ? "pago" :
                  hayConfirmacionCita ? "consulta_cita" :
                  hayListadoExamenes ? "examenes" : 
-                 yaSeConsultoInfo ? "ya_consultado" : "general"
+                 yaSeConsultoInfo ? "ya_consultado" :
+                 yaSeEnviaronDatos ? "datos_enviados" : // 🆕 NUEVO
+                 "general"
     };
 }
 
@@ -143,6 +172,20 @@ function quiereAsesor(mensaje) {
     ];
     
     return palabrasAsesor.some(palabra => 
+        mensaje.toLowerCase().includes(palabra)
+    );
+}
+
+// 🆕 Función para detectar preguntas sobre el proceso de pago
+function esPreguntaSobreProceso(mensaje) {
+    const palabrasProceso = [
+        "marca de agua", "sin marca", "cuando envie", "cuando envíe", 
+        "después del pago", "después de pagar", "una vez que pague",
+        "al pagar", "cuando pague", "que pasa", "qué pasa", "como funciona",
+        "cómo funciona", "proceso", "pasos", "después", "luego"
+    ];
+    
+    return palabrasProceso.some(palabra => 
         mensaje.toLowerCase().includes(palabra)
     );
 }
@@ -242,9 +285,10 @@ async function procesarTexto(message, res) {
         return res.json({ success: true, mensaje: "Usuario marcado como STOP automáticamente tras mensaje del admin" });
     }
 
-    // 5. 🆕 Detectar contexto de la conversación
-    const contextoInfo = detectarContextoConversacion(historialLimpio);
+    // 5. 🆕 Detectar contexto de la conversación (incluyendo observaciones)
+    const contextoInfo = detectarContextoConversacion(historialLimpio, observaciones);
     console.log("🎯 Contexto detectado:", contextoInfo);
+    console.log("📋 Observaciones de Wix:", observaciones);
 
     // 6. Preparar contexto
     const ultimaCedula = [...historialLimpio].reverse().find(m => esCedula(m.mensaje))?.mensaje || null;
@@ -262,6 +306,8 @@ async function procesarTexto(message, res) {
     Última cédula en historial: ${ultimaCedula ? "SÍ" : "NO"}
     Ya se consultó información: ${contextoInfo.yaSeConsultoInfo ? "SÍ" : "NO"}
     Bot preguntó por revisión de certificado: ${ultimaPreguntaFueRevision(historialLimpio) ? "SÍ" : "NO"}
+    Ya se enviaron datos de pago: ${contextoInfo.yaSeEnviaronDatos ? "SÍ" : "NO"}
+    Observaciones Wix: ${observaciones || "ninguna"}
     
     OPCIONES DE RESPUESTA (responde SOLO la etiqueta):
     - confirmar_cita: Usuario quiere consultar información de su cita médica (SOLO si no se consultó antes)
@@ -270,15 +316,18 @@ async function procesarTexto(message, res) {
     - solicitar_pago: Usuario quiere información de pago o confirma que ya revisó certificado
     - confirmar_revision: Usuario da CUALQUIER respuesta afirmativa confirmando que ya revisó el certificado 
       (incluye "si", "sí", "ya", "claro", "por supuesto", "desde luego", "obvio", "correcto", "exacto", etc.)
+    - pregunta_proceso: Usuario pregunta sobre el proceso después del pago, marca de agua, pasos siguientes
     - correccion_datos: Usuario indica que hay un error en los datos mostrados (palabras como "equivocado", "mal", "error", "debe ser")
     - solicitar_asesor: Usuario quiere hablar con una persona o reportar un problema
     - consulta_general: Preguntas generales sobre servicios, precios, horarios
     - sin_intencion_clara: No se puede determinar la intención claramente
     
     REGLAS ESPECIALES:
+    - Si ya se enviaron datos de pago y usuario pregunta sobre proceso/marca de agua/pasos = pregunta_proceso
+    - Si ya se enviaron datos de pago y usuario insiste o pregunta por pago = pregunta_proceso
     - Si bot preguntó "¿Ya revisaste el certificado?" y usuario da CUALQUIER respuesta afirmativa = confirmar_revision
       (Incluye: "si", "sí", "ya", "claro", "por supuesto", "desde luego", "obvio", "afirmativo", "correcto", "exacto", etc.)
-    - Si usuario menciona "pagar", "pago", "certificado" = solicitar_pago
+    - Si usuario menciona "pagar", "pago", "certificado" pero NO se han enviado datos = solicitar_pago
     - Si ya se consultó información y el usuario dice que está mal = correccion_datos
     - Si hay comprobante de pago + cédula en historial = solicitar_certificado
     - Si hay confirmación de cita + cédula = confirmar_cita (SOLO si no se consultó antes)
@@ -318,6 +367,23 @@ async function procesarTexto(message, res) {
 
     // 8. 🆕 MANEJO ESPECÍFICO POR CONTEXTO E INTENCIÓN
 
+    // 🚨 NUEVO: Manejar preguntas sobre el proceso después del pago
+    if (intencion === "pregunta_proceso" || 
+        (contextoInfo.yaSeEnviaronDatos && esPreguntaSobreProceso(userMessage))) {
+        
+        console.log("❓ Usuario pregunta sobre el proceso después del pago");
+        
+        await enviarMensajeYGuardar({
+            to,
+            userId: from,
+            nombre,
+            texto: "Una vez envíes tu comprobante de pago y número de documento, procesamos tu certificado sin marca de agua y te lo enviamos inmediatamente por este mismo chat.",
+            remitente: "sistema"
+        });
+        
+        return res.json({ success: true, mensaje: "Pregunta sobre proceso respondida" });
+    }
+
     // 🚨 NUEVO: Manejar confirmación de revisión de certificado
     // Usar clasificador principal + lógica de respaldo para confirmaciones
     if (intencion === "confirmar_revision" || 
@@ -347,8 +413,10 @@ Envía tu comprobante de pago por aquí y tu número de documento para generar t
         return res.json({ success: true, mensaje: "Datos de pago enviados tras confirmación" });
     }
 
-    // 🚨 NUEVO: Manejar solicitudes de pago
-    if (intencion === "solicitar_pago" || solicitaPago(userMessage)) {
+    // 🚨 NUEVO: Manejar solicitudes de pago (SOLO si no se enviaron recientemente)
+    if ((intencion === "solicitar_pago" || solicitaPago(userMessage)) && 
+        !contextoInfo.yaSeEnviaronDatos) {
+        
         console.log("💰 Usuario solicita información de pago");
         
         await enviarMensajeYGuardar({
