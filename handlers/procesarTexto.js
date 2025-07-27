@@ -1,132 +1,11 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+const { promptInstitucional, promptClasificador } = require('../utils/prompt');
 const { sendMessage } = require('../utils/sendMessage');
 const { sendPdf, generarPdfDesdeApi2Pdf } = require('../utils/pdf');
 const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('../utils/wixAPI');
 const { consultarInformacionPaciente } = require('../utils/consultarPaciente');
 const { marcarPagado } = require('../utils/marcarPagado');
 const { esCedula, contieneTexto } = require('../utils/validaciones');
-
-// 🆕 Prompt mejorado actualizado
-const promptInstitucional = `
-Eres el asistente virtual de exámenes médicos ocupacionales para BSL en Colombia. Tu tarea es responder en frases cortas, claras y sin tecnicismos. La mayoría de los usuarios tienen baja alfabetización.
-
-🎯 TU ROL:
-- Responde solo sobre exámenes médicos de BSL.
-- Si preguntan por su cita, pide número de documento si no lo tienes.
-- Saluda o despide si el usuario lo hace, siempre como BSL.
-- Para descargar el certificado, primero envía el soporte de pago por este medio.
-- Si pide un asesor o no entiendes, responde exactamente: "...transfiriendo con asesor" (sin punto final). Eso detiene el bot.
-
-📋 SERVICIOS:
-
-1. **Exámenes Ocupacionales**
-   - **Virtual**: $46.000 COP  
-     - Agenda tu hora
-     - Pruebas en línea
-     - Médico te contacta
-     - Pagas y descargas el certificado al instante
-     - Incluye: Médico osteomuscular, audiometría, optometría
-     - Link: https://www.bsl.com.co/nuevaorden-1 
-     - Horario: 7am a 7pm, todos los días
-
-   - **Presencial**: $69.000 COP  
-     - Calle 134 No. 7-83, Bogotá
-     - Lunes a viernes 7:30am-4:30pm | Sábados 8am-11:30am
-     - No requiere agendar, es por orden de llegada
-     - Incluye lo mismo que el virtual
-
-2. **Pagos**
-   - Bancolombia: Ahorros 44291192456 (cédula 79981585)
-   - Daviplata: 3014400818 (Mar Rea)
-   - Nequi: 3008021701 (Dan Tal)
-   - También Transfiya
-
-3. **Extras opcionales**
-   - Cardiovascular, Vascular, Espirometría, Dermatológico: $5.000 c/u
-   - Psicológico: $15.000
-   - Perfil lipídico: $60.000
-   - Glicemia: $20.000
-
-📌 INDICACIONES IMPORTANTES:
-- Si requiere perfil lipídico o glicemia, puede hacer el examen virtual y adjuntar los laboratorios después.
-- Si tiene exámenes de laboratorio realizados (incluso en otro laboratorio) puede adjuntarlos
-- Prueba psicosensométrica solo presencial (si es para conductores) de lo contrario es virtual
-- Para descargar el certificado, primero envía el soporte de pago por este medio.
-- El proceso es secuencial: agenda → pruebas virtuales → consulta médica → revisión y aprobación de certificado → pago.
-- Nunca muestres medios de pago ni los solicites antes de que el usuario haya revisado y aprobado el certificado.
-- Si el usuario pregunta por pago pregúntale: ¿Ya revisaste el certificado? y si responde que si envíale los datos para el pago.
-- Usa respuestas cortas (máx 2 líneas) y viñetas si hay varios puntos.
-- Todo el proceso dura 25 minutos las pruebas virtuales y 10 minutos la consulta médica
-
-• Si ya enviaste el certificado, **NO vuelvas a enviarlo** a menos que el usuario lo pida explícitamente.
-• Si pregunta por precios, horarios, cómo agendar u otra info general tras recibir el certificado, responde normalmente.
-• Si el usuario pide el certificado explícitamente ("certificado", "pdf", "descargar"), puedes volver a enviarlo.
-• Responde siempre con base en el historial de la conversación.
-
-📌 INTENCIONES:
-- Si pregunta cómo hacer un examen, quiere info general o necesita orientación, responde así:
-  "🩺 Nuestras opciones:
-   Virtual – $46.000 COP
-   Presencial – $69.000 COP"
-- Solo entrega los detalles completos si responde "virtual", "presencial", "el de 46", "el de 69", etc.
-- Si pregunta por cita respóndele que en el link de agendamiento están los turnos disponibles 
-- Si ya agendó la cita y necesita confirmar su horario respóndele:
-  "Claro, para ayudarte necesito tu número de documento. Por favor escríbelo."
-
-🔗 MENSAJES DEL ADMINISTRADOR:
-- Si un ADMINISTRADOR dio info o instrucciones útiles, úsalas como contexto.
-- Si pregunta "¿qué me falta terminar?", "¿qué hago ahora?", etc., explica lo que el ADMIN indicó.
-- Solo transfiere con asesor si no tienes información suficiente o el usuario lo pide.
-
-🔒 TEMAS NO PERMITIDOS:
-- Si pregunta por otros temas ajenos a BSL, responde que solo atiendes servicios médicos de BSL.
-- No uses formato tipo [texto](url); escribe los enlaces directo.
-- Resume respuestas en viñetas si hay varios puntos.
-`;
-
-// 🆕 Clasificador mejorado para trabajar mejor con imágenes y contexto
-const promptClasificador = `
-Eres un clasificador experto de intenciones para un asistente médico. Analiza el contexto completo de la conversación para determinar qué necesita el usuario.
-
-CONTEXTO A CONSIDERAR:
-- Si el usuario envió imágenes recientemente (comprobantes, confirmaciones, etc.)
-- Si ya existe una cédula en el historial
-- Si hay mensajes del administrador
-- El flujo natural de la conversación
-
-OPCIONES DE CLASIFICACIÓN (responde SOLO la etiqueta):
-
-1. **confirmar_cita** - Cuando el usuario:
-   - Pregunta por fecha/hora de su cita
-   - Envió confirmación de cita + quiere info
-   - Dice "cuándo es mi cita", "qué día tengo cita"
-
-2. **solicitar_certificado** - Cuando el usuario:
-   - Envió comprobante de pago + quiere certificado
-   - Pregunta por su certificado después de pagar
-   - Dice "mi certificado", "pdf", "descargar"
-
-3. **aprobar_certificado** - Cuando el usuario:
-   - Responde "sí", "apruebo", "está bien", "correcto"
-   - El admin preguntó por aprobación antes
-   - Confirma que está de acuerdo con algo
-
-4. **consulta_general** - Cuando el usuario:
-   - Pregunta precios, horarios, servicios
-   - Quiere información sobre exámenes
-   - Saluda o se presenta
-
-5. **sin_intencion_clara** - Cuando:
-   - No puedes determinar qué necesita
-   - El mensaje es ambiguo o incompleto
-
-REGLAS ESPECIALES:
-- Imágenes + cédula = infer intención del tipo de imagen
-- Admin pidió algo = considerar respuesta del usuario
-- Solo texto sin contexto = clasificar por palabras clave
-
-Responde únicamente con UNA de las 5 etiquetas anteriores.
-`;
 
 // Función de utilidad para evitar mensajes duplicados
 function limpiarDuplicados(historial) {
@@ -150,7 +29,7 @@ function yaSeEntregoCertificado(historial) {
     );
 }
 
-    // 🆕 Función mejorada para detectar el contexto de la conversación
+// 🆕 Función mejorada para detectar el contexto de la conversación
 function detectarContextoConversacion(historial) {
     const ultimosMessages = historial.slice(-15); // Más contexto
   
@@ -267,6 +146,31 @@ function quiereAsesor(mensaje) {
         mensaje.toLowerCase().includes(palabra)
     );
 }
+
+// 🆕 Función para detectar solicitudes de pago
+function solicitaPago(mensaje) {
+    const palabrasPago = [
+        "pagar", "pago", "pagos", "certificado", "datos", "cuenta", 
+        "transferir", "consignar", "donde pago", "como pago"
+    ];
+    
+    return palabrasPago.some(palabra => 
+        mensaje.toLowerCase().includes(palabra)
+    );
+}
+
+// 🆕 Función para detectar si el bot preguntó sobre revisión del certificado
+function ultimaPreguntaFueRevision(historial) {
+    const ultimosMessages = historial.slice(-3);
+    return ultimosMessages.some(m =>
+        m.from === "sistema" && 
+        m.mensaje.includes("¿Ya revisaste el certificado?")
+    );
+}
+
+/**
+* 🆕 Función mejorada para detectar mensaje del admin - más flexible
+*/
 function ultimoMensajeFueVerificarDatos(historial) {
     const mensajesAdmin = historial.filter(m => m.from === "admin");
     if (mensajesAdmin.length === 0) return false;
@@ -357,17 +261,24 @@ async function procesarTexto(message, res) {
     Contexto automático detectado: ${contextoInfo.contexto}
     Última cédula en historial: ${ultimaCedula ? "SÍ" : "NO"}
     Ya se consultó información: ${contextoInfo.yaSeConsultoInfo ? "SÍ" : "NO"}
+    Bot preguntó por revisión de certificado: ${ultimaPreguntaFueRevision(historialLimpio) ? "SÍ" : "NO"}
     
     OPCIONES DE RESPUESTA (responde SOLO la etiqueta):
     - confirmar_cita: Usuario quiere consultar información de su cita médica (SOLO si no se consultó antes)
     - solicitar_certificado: Usuario quiere su certificado médico después de pagar  
     - aprobar_certificado: Usuario confirma/aprueba su certificado (respuestas como "sí", "apruebo", "está bien", "correcto")
+    - solicitar_pago: Usuario quiere información de pago o confirma que ya revisó certificado
+    - confirmar_revision: Usuario da CUALQUIER respuesta afirmativa confirmando que ya revisó el certificado 
+      (incluye "si", "sí", "ya", "claro", "por supuesto", "desde luego", "obvio", "correcto", "exacto", etc.)
     - correccion_datos: Usuario indica que hay un error en los datos mostrados (palabras como "equivocado", "mal", "error", "debe ser")
     - solicitar_asesor: Usuario quiere hablar con una persona o reportar un problema
     - consulta_general: Preguntas generales sobre servicios, precios, horarios
     - sin_intencion_clara: No se puede determinar la intención claramente
     
     REGLAS ESPECIALES:
+    - Si bot preguntó "¿Ya revisaste el certificado?" y usuario da CUALQUIER respuesta afirmativa = confirmar_revision
+      (Incluye: "si", "sí", "ya", "claro", "por supuesto", "desde luego", "obvio", "afirmativo", "correcto", "exacto", etc.)
+    - Si usuario menciona "pagar", "pago", "certificado" = solicitar_pago
     - Si ya se consultó información y el usuario dice que está mal = correccion_datos
     - Si hay comprobante de pago + cédula en historial = solicitar_certificado
     - Si hay confirmación de cita + cédula = confirmar_cita (SOLO si no se consultó antes)
@@ -406,6 +317,50 @@ async function procesarTexto(message, res) {
     console.log("🎯 Contexto:", contextoInfo.contexto);
 
     // 8. 🆕 MANEJO ESPECÍFICO POR CONTEXTO E INTENCIÓN
+
+    // 🚨 NUEVO: Manejar confirmación de revisión de certificado
+    // Usar clasificador principal + lógica de respaldo para confirmaciones
+    if (intencion === "confirmar_revision" || 
+        intencion === "aprobar_certificado" ||
+        (ultimaPreguntaFueRevision(historialLimpio) && 
+         (intencion === "consulta_general" || intencion === "sin_intencion_clara"))) {
+        
+        console.log("💳 Usuario confirmó que ya revisó el certificado - enviando datos de pago");
+        
+        const datosPago = `💳 **Datos para el pago:**
+
+**Bancolombia:** Ahorros 44291192456 (cédula 79981585)
+**Daviplata:** 3014400818 (Mar Rea)  
+**Nequi:** 3008021701 (Dan Tal)
+**También:** Transfiya
+
+Envía tu comprobante de pago por aquí y tu número de documento para generar tu certificado.`;
+
+        await enviarMensajeYGuardar({
+            to,
+            userId: from,
+            nombre,
+            texto: datosPago,
+            remitente: "sistema"
+        });
+        
+        return res.json({ success: true, mensaje: "Datos de pago enviados tras confirmación" });
+    }
+
+    // 🚨 NUEVO: Manejar solicitudes de pago
+    if (intencion === "solicitar_pago" || solicitaPago(userMessage)) {
+        console.log("💰 Usuario solicita información de pago");
+        
+        await enviarMensajeYGuardar({
+            to,
+            userId: from,
+            nombre,
+            texto: "¿Ya revisaste el certificado?",
+            remitente: "sistema"
+        });
+        
+        return res.json({ success: true, mensaje: "Pregunta sobre revisión de certificado enviada" });
+    }
 
     // 🚨 NUEVO: Manejar correcciones de datos
     if (intencion === "correccion_datos" || intencion === "solicitar_asesor" || 
