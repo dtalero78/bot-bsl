@@ -29,9 +29,9 @@ function yaSeEntregoCertificado(historial) {
     );
 }
 
-// 🆕 Función mejorada para detectar el contexto de la conversación
+    // 🆕 Función mejorada para detectar el contexto de la conversación
 function detectarContextoConversacion(historial) {
-    const ultimosMessages = historial.slice(-10);
+    const ultimosMessages = historial.slice(-15); // Más contexto
   
     // Buscar si hay un comprobante de pago en el historial reciente
     const hayComprobantePago = ultimosMessages.some(m =>
@@ -43,15 +43,15 @@ function detectarContextoConversacion(historial) {
         m.mensaje.includes("comprobante_pago")
     );
   
-    // Buscar si hay una confirmación de cita en el historial reciente
+    // 🆕 SOLO considerar confirmación de cita si REALMENTE hubo una imagen
     const hayConfirmacionCita = ultimosMessages.some(m =>
-        m.mensaje.includes("📅 Confirmación de cita recibida") ||
-        m.mensaje.includes("Confirmación de cita recibida") ||
-        m.mensaje.includes("confirmación de cita") ||
-        m.mensaje.includes("confirmacion_cita")
+        (m.mensaje.includes("📅 Confirmación de cita recibida") ||
+         m.mensaje.includes("Confirmación de cita recibida")) &&
+        // Verificar que realmente vino de procesamiento de imagen
+        m.from === "sistema"
     );
   
-    // Buscar si hay un listado de exámenes
+    // Buscar si hay un listado de exámenes  
     const hayListadoExamenes = ultimosMessages.some(m =>
         m.mensaje.includes("📋 Listado de exámenes recibido") ||
         m.mensaje.includes("Listado de exámenes recibido") ||
@@ -59,13 +59,21 @@ function detectarContextoConversacion(historial) {
         m.mensaje.includes("listado_examenes")
     );
 
+    // 🆕 Detectar si ya se consultó información recientemente
+    const yaSeConsultoInfo = ultimosMessages.some(m =>
+        m.mensaje.includes("📄 Información registrada:") ||
+        m.mensaje.includes("Información registrada:")
+    );
+
     return {
         hayComprobantePago,
         hayConfirmacionCita,
         hayListadoExamenes,
+        yaSeConsultoInfo,
         contexto: hayComprobantePago ? "pago" :
                  hayConfirmacionCita ? "consulta_cita" :
-                 hayListadoExamenes ? "examenes" : "general"
+                 hayListadoExamenes ? "examenes" : 
+                 yaSeConsultoInfo ? "ya_consultado" : "general"
     };
 }
 
@@ -115,9 +123,29 @@ async function marcarStopEnWix(userId) {
     }
 }
 
-/**
-* 🆕 Función mejorada para detectar mensaje del admin - más flexible
-*/
+// 🆕 Función para detectar si el usuario está haciendo una corrección
+function esCorreccionDeHorario(mensaje) {
+    const palabrasCorreccion = [
+        "equivocada", "equivocado", "mal", "error", "incorrecto", "incorrecta",
+        "debe ser", "debería ser", "es a las", "son las", "no es", "no son"
+    ];
+    
+    return palabrasCorreccion.some(palabra => 
+        mensaje.toLowerCase().includes(palabra)
+    );
+}
+
+// 🆕 Función para detectar cuando el usuario quiere hablar con un asesor
+function quiereAsesor(mensaje) {
+    const palabrasAsesor = [
+        "asesor", "persona", "humano", "ayuda", "problema", "error",
+        "hablar con", "contactar", "comunicar", "equivocado", "mal"
+    ];
+    
+    return palabrasAsesor.some(palabra => 
+        mensaje.toLowerCase().includes(palabra)
+    );
+}
 function ultimoMensajeFueVerificarDatos(historial) {
     const mensajesAdmin = historial.filter(m => m.from === "admin");
     if (mensajesAdmin.length === 0) return false;
@@ -207,21 +235,29 @@ async function procesarTexto(message, res) {
     
     Contexto automático detectado: ${contextoInfo.contexto}
     Última cédula en historial: ${ultimaCedula ? "SÍ" : "NO"}
+    Ya se consultó información: ${contextoInfo.yaSeConsultoInfo ? "SÍ" : "NO"}
     
     OPCIONES DE RESPUESTA (responde SOLO la etiqueta):
-    - confirmar_cita: Usuario quiere consultar información de su cita médica
+    - confirmar_cita: Usuario quiere consultar información de su cita médica (SOLO si no se consultó antes)
     - solicitar_certificado: Usuario quiere su certificado médico después de pagar  
     - aprobar_certificado: Usuario confirma/aprueba su certificado (respuestas como "sí", "apruebo", "está bien", "correcto")
+    - correccion_datos: Usuario indica que hay un error en los datos mostrados (palabras como "equivocado", "mal", "error", "debe ser")
+    - solicitar_asesor: Usuario quiere hablar con una persona o reportar un problema
     - consulta_general: Preguntas generales sobre servicios, precios, horarios
     - sin_intencion_clara: No se puede determinar la intención claramente
     
     REGLAS ESPECIALES:
+    - Si ya se consultó información y el usuario dice que está mal = correccion_datos
     - Si hay comprobante de pago + cédula en historial = solicitar_certificado
-    - Si hay confirmación de cita + cédula = confirmar_cita
+    - Si hay confirmación de cita + cédula = confirmar_cita (SOLO si no se consultó antes)
     - Si el admin preguntó por aprobación = aprobar_certificado
+    - Si usuario menciona "asesor", "problema", "error" = solicitar_asesor
+    - Si ya se mostró información y usuario envía solo cédula = correccion_datos o solicitar_asesor
     
     Contexto de los últimos mensajes:
     ${contextoConversacion}
+    
+    Último mensaje del usuario: "${userMessage}"
     
     Responde únicamente con una de las etiquetas de las opciones.
     `;
@@ -248,11 +284,43 @@ async function procesarTexto(message, res) {
     console.log("🎯 Intención clasificada:", intencion);
     console.log("🎯 Contexto:", contextoInfo.contexto);
 
-    // 8. 🆕 MANEJO ESPECÍFICO POR CONTEXTO
+    // 8. 🆕 MANEJO ESPECÍFICO POR CONTEXTO E INTENCIÓN
 
-    // CONTEXTO: Usuario envió confirmación de cita + cédula
-    if (contextoInfo.contexto === "consulta_cita" && ultimaCedula) {
-        console.log("📅 Procesando consulta de cita con cédula:", ultimaCedula);
+    // 🚨 NUEVO: Manejar correcciones de datos
+    if (intencion === "correccion_datos" || intencion === "solicitar_asesor" || 
+        (contextoInfo.yaSeConsultoInfo && (esCorreccionDeHorario(userMessage) || quiereAsesor(userMessage)))) {
+        
+        console.log("🔧 Usuario reporta error en datos o solicita asesor");
+        
+        await enviarMensajeYGuardar({
+            to,
+            userId: from,
+            nombre,
+            texto: "Entiendo tu preocupación. ...transfiriendo con asesor",
+            remitente: "sistema"
+        });
+        
+        return res.json({ success: true, mensaje: "Transferido a asesor por corrección de datos" });
+    }
+
+    // 🚨 NUEVO: Evitar bucle si ya se consultó información
+    if (contextoInfo.yaSeConsultoInfo && esCedula(userMessage)) {
+        console.log("🔄 Evitando bucle - ya se consultó información para esta cédula");
+        
+        await enviarMensajeYGuardar({
+            to,
+            userId: from,
+            nombre,
+            texto: "Ya consulté tu información. Si hay algún error o necesitas ayuda adicional, te transfiero con un asesor. ...transfiriendo con asesor",
+            remitente: "sistema"
+        });
+        
+        return res.json({ success: true, mensaje: "Evitado bucle infinito - transferido a asesor" });
+    }
+
+    // CONTEXTO: Usuario envió confirmación de cita + cédula (SOLO si realmente hubo imagen)
+    if (contextoInfo.contexto === "consulta_cita" && ultimaCedula && !contextoInfo.yaSeConsultoInfo) {
+        console.log("📅 Procesando consulta de cita con cédula (imagen confirmada):", ultimaCedula);
       
         await enviarMensajeYGuardar({
             to,
@@ -404,8 +472,8 @@ async function procesarTexto(message, res) {
         return res.json({ success: true });
     }
 
-    // 10. Manejo de intención: CONFIRMAR CITA (cuando no hay contexto específico)
-    if (intencion === "confirmar_cita") {
+    // 10. Manejo de intención: CONFIRMAR CITA (cuando no hay contexto específico y NO se consultó antes)
+    if (intencion === "confirmar_cita" && !contextoInfo.yaSeConsultoInfo) {
         if (!ultimaCedula) {
             await enviarMensajeYGuardar({
                 to,
@@ -458,8 +526,8 @@ async function procesarTexto(message, res) {
         return res.json({ success: true });
     }
 
-    // 11. Si el usuario solo envía cédula sin contexto, preguntar qué necesita
-    if (esCedula(userMessage) && contextoInfo.contexto === "general") {
+    // 11. Si el usuario solo envía cédula sin contexto Y no se ha consultado antes
+    if (esCedula(userMessage) && contextoInfo.contexto === "general" && !contextoInfo.yaSeConsultoInfo) {
         await enviarMensajeYGuardar({
             to,
             userId: from,
