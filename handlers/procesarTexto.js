@@ -176,6 +176,19 @@ function quiereAsesor(mensaje) {
     );
 }
 
+// 🆕 Función para detectar preguntas sobre precios (NO solicitudes de pago)
+function esPreguntaSobrePrecios(mensaje) {
+    const palabrasPrecios = [
+        "cuanto vale", "cuánto vale", "cuanto cuesta", "cuánto cuesta",
+        "cual es el precio", "cuál es el precio", "precio", "costo",
+        "cuanto es", "cuánto es", "valor del", "costo del"
+    ];
+    
+    return palabrasPrecios.some(palabra => 
+        mensaje.toLowerCase().includes(palabra)
+    );
+}
+
 // 🆕 Función para detectar preguntas sobre el proceso de pago
 function esPreguntaSobreProceso(mensaje) {
     const palabrasProceso = [
@@ -190,15 +203,22 @@ function esPreguntaSobreProceso(mensaje) {
     );
 }
 
-// 🆕 Función para detectar solicitudes de pago
+// 🆕 Función para detectar solicitudes de pago (excluyendo preguntas sobre precios)
 function solicitaPago(mensaje) {
+    const mensajeLower = mensaje.toLowerCase();
+    
+    // Si es una pregunta sobre precios, NO es solicitud de pago
+    if (esPreguntaSobrePrecios(mensaje)) {
+        return false;
+    }
+    
     const palabrasPago = [
-        "pagar", "pago", "pagos", "certificado", "datos", "cuenta", 
-        "transferir", "consignar", "donde pago", "como pago"
+        "quiero pagar", "como pago", "donde pago", "datos para pagar",
+        "información de pago", "datos de pago", "transferir", "consignar"
     ];
     
     return palabrasPago.some(palabra => 
-        mensaje.toLowerCase().includes(palabra)
+        mensajeLower.includes(palabra)
     );
 }
 
@@ -313,21 +333,23 @@ async function procesarTexto(message, res) {
     - confirmar_cita: Usuario quiere consultar información de su cita médica (SOLO si no se consultó antes)
     - solicitar_certificado: Usuario quiere su certificado médico después de pagar  
     - aprobar_certificado: Usuario confirma/aprueba su certificado (respuestas como "sí", "apruebo", "está bien", "correcto")
-    - solicitar_pago: Usuario quiere información de pago o confirma que ya revisó certificado
+    - solicitar_pago: Usuario quiere información de pago o datos para transferir/pagar
     - confirmar_revision: Usuario da CUALQUIER respuesta afirmativa confirmando que ya revisó el certificado 
       (incluye "si", "sí", "ya", "claro", "por supuesto", "desde luego", "obvio", "correcto", "exacto", etc.)
     - pregunta_proceso: Usuario pregunta sobre el proceso después del pago, marca de agua, pasos siguientes
+    - pregunta_precios: Usuario pregunta sobre costos, precios, "cuánto vale", "cuánto cuesta", valores de servicios
     - correccion_datos: Usuario indica que hay un error en los datos mostrados (palabras como "equivocado", "mal", "error", "debe ser")
     - solicitar_asesor: Usuario quiere hablar con una persona o reportar un problema
-    - consulta_general: Preguntas generales sobre servicios, precios, horarios
+    - consulta_general: Preguntas generales sobre servicios, horarios
     - sin_intencion_clara: No se puede determinar la intención claramente
     
     REGLAS ESPECIALES:
+    - Si usuario pregunta "cuánto vale", "cuánto cuesta", "precio", "costo" = pregunta_precios (NO solicitar_pago)
     - Si ya se enviaron datos de pago y usuario pregunta sobre proceso/marca de agua/pasos = pregunta_proceso
     - Si ya se enviaron datos de pago y usuario insiste o pregunta por pago = pregunta_proceso
     - Si bot preguntó "¿Ya revisaste el certificado?" y usuario da CUALQUIER respuesta afirmativa = confirmar_revision
       (Incluye: "si", "sí", "ya", "claro", "por supuesto", "desde luego", "obvio", "afirmativo", "correcto", "exacto", etc.)
-    - Si usuario menciona "pagar", "pago", "certificado" pero NO se han enviado datos = solicitar_pago
+    - Si usuario menciona "quiero pagar", "datos para pagar", "cómo pago" pero NO se han enviado datos = solicitar_pago
     - Si ya se consultó información y el usuario dice que está mal = correccion_datos
     - Si hay comprobante de pago + cédula en historial = solicitar_certificado
     - Si hay confirmación de cita + cédula = confirmar_cita (SOLO si no se consultó antes)
@@ -364,8 +386,25 @@ async function procesarTexto(message, res) {
 
     console.log("🎯 Intención clasificada:", intencion);
     console.log("🎯 Contexto:", contextoInfo.contexto);
+    console.log("💡 Es pregunta sobre precios:", esPreguntaSobrePrecios(userMessage));
+    console.log("💡 Es solicitud de pago:", solicitaPago(userMessage));
 
     // 8. 🆕 MANEJO ESPECÍFICO POR CONTEXTO E INTENCIÓN
+
+    // 🚨 NUEVO: Manejar preguntas sobre precios
+    if (intencion === "pregunta_precios" || esPreguntaSobrePrecios(userMessage)) {
+        console.log("💰 Usuario pregunta sobre precios de servicios");
+        
+        await enviarMensajeYGuardar({
+            to,
+            userId: from,
+            nombre,
+            texto: "🩺 Nuestras opciones:\nVirtual – $46.000 COP\nPresencial – $69.000 COP",
+            remitente: "sistema"
+        });
+        
+        return res.json({ success: true, mensaje: "Información de precios enviada" });
+    }
 
     // 🚨 NUEVO: Manejar preguntas sobre el proceso después del pago
     if (intencion === "pregunta_proceso" || 
