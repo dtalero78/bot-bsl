@@ -176,6 +176,30 @@ function quiereAsesor(mensaje) {
     );
 }
 
+// 🆕 Función para detectar cuando usuario elige una opción de examen
+function eligeOpcionExamen(mensaje) {
+    const mensajeLower = mensaje.toLowerCase().trim();
+    const opcionesValidas = [
+        "virtual", "presencial", "el virtual", "el presencial", 
+        "el de 46", "el de 69", "46000", "69000", "si virtual", "si presencial"
+    ];
+    
+    return opcionesValidas.some(opcion => mensajeLower.includes(opcion));
+}
+
+// 🆕 Función para detectar solicitud de hacer examen (NO confirmar cita)
+function quiereHacerExamen(mensaje) {
+    const palabrasExamen = [
+        "examen médico", "examen ocupacional", "certificado médico", 
+        "necesito un examen", "quiero un examen", "hacer un examen",
+        "examen que tenga", "optometría", "audiometría", "osteomuscular"
+    ];
+    
+    return palabrasExamen.some(palabra => 
+        mensaje.toLowerCase().includes(palabra)
+    );
+}
+
 // 🆕 Función para detectar preguntas sobre precios (NO solicitudes de pago)
 function esPreguntaSobrePrecios(mensaje) {
     const palabrasPrecios = [
@@ -388,8 +412,83 @@ async function procesarTexto(message, res) {
     console.log("🎯 Contexto:", contextoInfo.contexto);
     console.log("💡 Es pregunta sobre precios:", esPreguntaSobrePrecios(userMessage));
     console.log("💡 Es solicitud de pago:", solicitaPago(userMessage));
+    console.log("💡 Quiere hacer examen:", quiereHacerExamen(userMessage));
+    console.log("💡 Elige opción examen:", eligeOpcionExamen(userMessage));
 
     // 8. 🆕 MANEJO ESPECÍFICO POR CONTEXTO E INTENCIÓN
+
+    // 🚨 NUEVO: Manejar cuando usuario quiere HACER un examen (no confirmar cita)
+    if (intencion === "quiere_hacer_examen" || quiereHacerExamen(userMessage)) {
+        console.log("🩺 Usuario quiere HACER un examen médico ocupacional");
+        
+        await enviarMensajeYGuardar({
+            to,
+            userId: from,
+            nombre,
+            texto: "🩺 Nuestras opciones:\nVirtual – $46.000 COP\nPresencial – $69.000 COP\n\n¿Cuál opción te interesa?",
+            remitente: "sistema"
+        });
+        
+        return res.json({ success: true, mensaje: "Opciones de examen enviadas" });
+    }
+
+    // 🚨 NUEVO: Manejar cuando usuario elige opción Virtual o Presencial
+    if (intencion === "elegir_opcion_examen" || eligeOpcionExamen(userMessage)) {
+        const esVirtual = userMessage.toLowerCase().includes("virtual") || userMessage.toLowerCase().includes("46");
+        
+        console.log(`🎯 Usuario eligió opción: ${esVirtual ? "Virtual" : "Presencial"}`);
+        
+        if (esVirtual) {
+            const detallesVirtual = `📱 **Examen Virtual - $46.000 COP**
+
+📅 **Horario:** 7am a 7pm, todos los días
+⏱️ **Duración:** 35 minutos total (25 min pruebas + 10 min consulta médica)
+
+📋 **Incluye:**
+• Médico osteomuscular
+• Audiometría 
+• Optometría
+
+🔗 **Para agendar tu hora:**
+https://www.bsl.com.co/nuevaorden-1
+
+Una vez termines el examen, el médico revisará y aprobará tu certificado. Después pagas y lo descargas al instante.`;
+
+            await enviarMensajeYGuardar({
+                to,
+                userId: from,
+                nombre,
+                texto: detallesVirtual,
+                remitente: "sistema"
+            });
+        } else {
+            const detallesPresencial = `🏥 **Examen Presencial - $69.000 COP**
+
+📍 **Ubicación:** Calle 134 No. 7-83, Bogotá
+📅 **Horario:** 
+• Lunes a viernes: 7:30am-4:30pm
+• Sábados: 8am-11:30am
+
+📋 **Incluye:**
+• Médico osteomuscular
+• Audiometría 
+• Optometría
+
+ℹ️ **No requiere agendar** - Es por orden de llegada
+
+Una vez termines el examen, procesamos tu certificado y lo descargas pagando $46.000 adicionales.`;
+
+            await enviarMensajeYGuardar({
+                to,
+                userId: from,
+                nombre,
+                texto: detallesPresencial,
+                remitente: "sistema"
+            });
+        }
+        
+        return res.json({ success: true, mensaje: `Detalles de examen ${esVirtual ? "virtual" : "presencial"} enviados` });
+    }
 
     // 🚨 NUEVO: Manejar preguntas sobre precios
     if (intencion === "pregunta_precios" || esPreguntaSobrePrecios(userMessage)) {
