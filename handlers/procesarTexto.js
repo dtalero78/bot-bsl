@@ -425,7 +425,7 @@ async function procesarTexto(message, res) {
             to,
             userId: from,
             nombre,
-            texto: "🩺 Nuestras opciones:\nVirtual – $46.000 COP\nPresencial – $69.000 COP\n\n¿Cuál opción te interesa?",
+            texto: "🩺 Nuestras opciones:\nVirtual – $46.000 COP\nPresencial – $69.000 COP",
             remitente: "sistema"
         });
         
@@ -474,9 +474,7 @@ Una vez termines el examen, el médico revisará y aprobará tu certificado. Des
 • Audiometría 
 • Optometría
 
-ℹ️ **No requiere agendar** - Es por orden de llegada
-
-Una vez termines el examen, procesamos tu certificado y lo descargas pagando $46.000 adicionales.`;
+ℹ️ **No requiere agendar** - Es por orden de llegada`;
 
             await enviarMensajeYGuardar({
                 to,
@@ -538,7 +536,7 @@ Una vez termines el examen, procesamos tu certificado y lo descargas pagando $46
 **Nequi:** 3008021701 (Dan Tal)
 **También:** Transfiya
 
-Envía tu comprobante de pago por aquí y tu número de documento para generar tu certificado.`;
+Envía SOLO tu comprobante de pago por aquí`;
 
         await enviarMensajeYGuardar({
             to,
@@ -578,7 +576,7 @@ Envía tu comprobante de pago por aquí y tu número de documento para generar t
             to,
             userId: from,
             nombre,
-            texto: "Entiendo tu preocupación. ...transfiriendo con asesor",
+            texto: "...transfiriendo con asesor",
             remitente: "sistema"
         });
         
