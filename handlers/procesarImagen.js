@@ -176,7 +176,7 @@ async function procesarImagen(message, res) {
                 mensajeRespuesta = `Hemos recibido tu comprobante`;
                 // Continuar con lógica de solicitar documento
                 await sendMessage(to, mensajeRespuesta);
-                await sendMessage(to, "¿Cuál es tu número de documento?");
+                await sendMessage(to, "Escribe SOLO tu documento SIN puntos y SIN letras");
             }
             break;
 
