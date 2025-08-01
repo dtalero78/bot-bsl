@@ -241,7 +241,7 @@ async function procesarImagen(message, res) {
                     : "📷 Comprobante de pago recibido - Valor no detectado";
 
                 if (valorEsValido) {
-                    mensajeRespuesta = "Comprobante recibido correctamente. Ahora escribe SOLO tu número de documento (sin puntos ni letras).";
+                    mensajeRespuesta = "Ahora escribe SOLO tu número de documento *(sin puntos ni letras)*.";
                 } else {
                     mensajeRespuesta = "No pude identificar el valor en el comprobante. Por favor envía una imagen más clara del soporte de pago.";
                 }
