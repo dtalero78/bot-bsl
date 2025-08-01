@@ -243,6 +243,18 @@ function ultimoMensajeFueVerificarDatos(historial) {
     return mensajesStop.some(msg => ultimoMensajeAdmin.mensaje.toLowerCase().includes(msg.toLowerCase()));
 }
 
+// Función para detectar si el bot pidió documento recientemente
+function botPidioDocumento(historial) {
+    const ultimosMessages = historial.slice(-5);
+    return ultimosMessages.some(m =>
+        m.from === "sistema" && 
+        (m.mensaje.includes("necesitaría tu número de documento") ||
+         m.mensaje.includes("necesito tu número de documento") ||
+         m.mensaje.includes("proporciona tu número de documento") ||
+         m.mensaje.includes("indícame tu número de documento"))
+    );
+}
+
 // Función simplificada para clasificar intenciones
 function clasificarIntencion(mensaje, historial, contexto) {
     const mensajeLower = mensaje.toLowerCase().trim();
@@ -282,9 +294,12 @@ function clasificarIntencion(mensaje, historial, contexto) {
     
     // 7. Solo cédula - 🆕 LÓGICA MEJORADA
     if (esCedula(mensaje)) {
+        // 🚨 PRIORIDAD: Si el bot pidió documento, es para confirmar cita
+        if (botPidioDocumento(historial)) return "confirmar_cita_solicitada";
+        
         if (contexto.hayComprobantePago) return "solicitar_certificado";
         if (contexto.hayConfirmacionCita) return "confirmar_cita";
-        if (contexto.hayDocumentoIdentidad) return "aclarar_necesidad"; // 🆕 NUEVO
+        if (contexto.hayDocumentoIdentidad) return "aclarar_necesidad";
         return "cedula_sola";
     }
     
@@ -352,6 +367,84 @@ async function procesarTexto(message, res) {
     console.log("🎯 Intención clasificada:", intencion);
 
     // 8. MANEJO ESPECÍFICO POR INTENCIÓN
+
+    // 🆕 NUEVO: Manejar cuando usuario envió documento de identidad y responde
+    if (intencion === "respuesta_documento_enviado") {
+        console.log("🆔 Usuario responde después de enviar documento");
+        
+        // Usar OpenAI para respuesta contextual
+        const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${process.env.OPENAI_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: 'gpt-4o',
+                messages: [
+                    { role: 'system', content: promptInstitucional },
+                    ...historialLimpio.slice(-8).map(m => ({
+                        role: m.from === "usuario" ? "user" : "assistant",
+                        content: m.mensaje
+                    })),
+                    { role: 'user', content: userMessage }
+                ],
+                max_tokens: 150
+            })
+        });
+
+        const openaiJson = await aiRes.json();
+        const respuestaBot = openaiJson.choices?.[0]?.message?.content || "¿En qué puedo ayudarte?";
+
+        await enviarMensajeYGuardar({
+            to,
+            userId: from,
+            nombre,
+            texto: respuestaBot,
+            remitente: "sistema"
+        });
+
+        return res.json({ success: true, respuesta: respuestaBot });
+    }
+
+    // 🆕 NUEVO: Cuando usuario envía cédula después de documento de identidad
+    if (intencion === "aclarar_necesidad") {
+        console.log("🆔 Usuario envió cédula después de documento - preguntando necesidad");
+        
+        await enviarMensajeYGuardar({
+            to,
+            userId: from,
+            nombre,
+            texto: "He recibido tu documento. ¿Necesitas consultar información sobre tu cita médica o realizar un examen ocupacional?",
+            remitente: "sistema"
+        });
+        
+        return res.json({ success: true, mensaje: "Pregunta sobre necesidad enviada" });
+    }
+
+    // 🆕 NUEVO: Contexto de listado de exámenes
+    if (contextoInfo.contexto === "examenes") {
+        console.log("📋 Usuario en contexto de listado de exámenes");
+        
+        // Si elige opción después de enviar listado
+        if (intencion === "elegir_opcion_examen") {
+            const esVirtual = userMessage.toLowerCase().includes("virtual") || userMessage.toLowerCase().includes("46");
+            
+            const respuesta = esVirtual 
+                ? "Perfecto, para el examen virtual puedes agendar en: https://www.bsl.com.co/nuevaorden-1\n\nHorario: 7am a 7pm, todos los días."
+                : "Perfecto, para el examen presencial puedes venir a:\n📍 Calle 134 No. 7-83, Bogotá\n⏰ Lunes a viernes: 7:30am-4:30pm | Sábados: 8am-11:30am";
+            
+            await enviarMensajeYGuardar({
+                to,
+                userId: from,
+                nombre,
+                texto: respuesta,
+                remitente: "sistema"
+            });
+            
+            return res.json({ success: true, mensaje: "Instrucciones de examen enviadas" });
+        }
+    }
 
     // Usuario quiere HACER un examen
     if (intencion === "quiere_hacer_examen") {
