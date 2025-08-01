@@ -2,6 +2,42 @@ const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fet
 const { sendMessage } = require('../utils/sendMessage');
 const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('../utils/wixAPI');
 
+// Función de utilidad para evitar mensajes duplicados
+function limpiarDuplicados(historial) {
+    const vistos = new Set();
+    return historial.filter(m => {
+        const clave = `${m.from}|${m.mensaje}`;
+        if (vistos.has(clave)) return false;
+        vistos.add(clave);
+        return true;
+    });
+}
+
+// Función para enviar y guardar mensaje
+async function enviarMensajeYGuardar({ to, userId, nombre, texto, remitente = "sistema" }) {
+    try {
+        if (to) {
+            const resultado = await sendMessage(to, texto);
+            if (!resultado.success && resultado.error) {
+                console.error(`❌ Error enviando mensaje a ${to}:`, resultado.error);
+            }
+        }
+        
+        const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
+        const historialLimpio = limpiarDuplicados(historial);
+        const nuevoHistorial = limpiarDuplicados([
+            ...historialLimpio,
+            { from: remitente, mensaje: texto }
+        ]);
+        
+        await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
+        return { success: true };
+    } catch (error) {
+        console.error(`❌ Error en enviarMensajeYGuardar para ${userId}:`, error.message);
+        return { success: false, error: error.message };
+    }
+}
+
 // Función para clasificar la imagen usando OpenAI
 async function clasificarImagen(base64Image, mimeType) {
     const prompt = `Clasifica esta imagen en UNA de estas categorías y responde SOLO la etiqueta:
@@ -43,7 +79,7 @@ Responde únicamente la etiqueta correspondiente.`;
 
 // Función para extraer valor de comprobante de pago
 async function extraerValorPago(base64Image, mimeType) {
-    const prompt = "Extrae SOLO el valor pagado (valor de la transferencia en pesos colombianos) que aparece en este comprobante bancario. Responde solo el valor exacto, sin explicaciones, ni símbolos adicionales.";
+    const prompt = "Extrae SOLO el valor pagado (valor de la transferencia en pesos colombianos) que aparece en este comprobante bancario. Ten en cuenta si tiene puntos o comas. Responde solo el valor exacto, sin explicaciones, ni símbolos adicionales.";
 
     try {
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -117,6 +153,8 @@ async function procesarImagen(message, res) {
     const chatId = message.chat_id;
     const to = chatId || `${from}@s.whatsapp.net`;
 
+    console.log(`📷 Procesando imagen de: ${from} (${nombre})`);
+
     // ✅ Ignorar si la imagen fue enviada por el admin o el bot
     const BOT_NUMBER = "573008021701";
     if (message.from_me === true || message.from === BOT_NUMBER) {
@@ -127,7 +165,7 @@ async function procesarImagen(message, res) {
     // ✅ Verificación de observaciones para STOP
     const { observaciones = "" } = await obtenerConversacionDeWix(from);
     if (String(observaciones).toLowerCase().includes("stop")) {
-        console.log(`[STOP] Usuario bloqueado por observaciones: ${from}`);
+        console.log(`🛑 Usuario bloqueado por observaciones: ${from}`);
         return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones (silencioso)." });
     }
 
@@ -135,94 +173,155 @@ async function procesarImagen(message, res) {
     const mimeType = message.image?.mime_type || "image/jpeg";
     const urlImg = `https://gate.whapi.cloud/media/${imageId}`;
 
-    await sendMessage(to, "🔍 Un momento por favor...");
-    await new Promise(resolve => setTimeout(resolve, 6000)); // Espera para asegurar disponibilidad
-
-    // Descargar la imagen
-    const whapiRes = await fetch(urlImg, {
-        method: 'GET',
-        headers: { "Authorization": `Bearer ${process.env.WHAPI_KEY}` }
+    // 1. Guardar que el usuario envió una imagen
+    await enviarMensajeYGuardar({
+        to: null, // No enviar mensaje al usuario aún
+        userId: from,
+        nombre,
+        texto: "📷 Imagen enviada",
+        remitente: "usuario"
     });
 
-    if (!whapiRes.ok) {
-        const errorText = await whapiRes.text();
-        console.error("Error de Whapi:", errorText);
-        return res.status(500).json({ success: false, error: "No se pudo descargar la imagen de Whapi" });
-    }
+    // 2. Enviar mensaje de procesamiento
+    await enviarMensajeYGuardar({
+        to,
+        userId: from,
+        nombre,
+        texto: "🔍 Un momento por favor...",
+        remitente: "sistema"
+    });
 
-    const arrayBuffer = await whapiRes.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const base64Image = buffer.toString('base64');
+    // 3. Esperar para asegurar disponibilidad de la imagen
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
-    // 🆕 CLASIFICAR LA IMAGEN PRIMERO
-    const tipoImagen = await clasificarImagen(base64Image, mimeType);
-    console.log(`📷 Tipo de imagen detectado: ${tipoImagen}`);
+    try {
+        // 4. Descargar la imagen
+        const whapiRes = await fetch(urlImg, {
+            method: 'GET',
+            headers: { "Authorization": `Bearer ${process.env.WHAPI_KEY}` }
+        });
 
-    let mensajeRespuesta = "";
-    let mensajeUsuario = "";
-
-    switch (tipoImagen) {
-        case "comprobante_pago":
-            // Procesar como comprobante de pago (lógica original)
-            const valorPago = await extraerValorPago(base64Image, mimeType);
-            const valorNumerico = valorPago.replace(/[^0-9]/g, "");
-            const valorEsValido = /^[0-9]{4,}$/.test(valorNumerico);
-
-            mensajeUsuario = "📷 Comprobante de pago recibido";
+        if (!whapiRes.ok) {
+            const errorText = await whapiRes.text();
+            console.error("❌ Error descargando imagen de Whapi:", errorText);
             
-            if (!valorEsValido) {
-                mensajeRespuesta = "No pude identificar el valor del comprobante. Por favor envía una imagen clara del soporte de pago.";
-            } else {
-                mensajeRespuesta = `Hemos recibido tu comprobante`;
-                // Continuar con lógica de solicitar documento
-                await sendMessage(to, mensajeRespuesta);
-                await sendMessage(to, "Escribe SOLO tu documento SIN puntos y SIN letras");
-            }
-            break;
+            await enviarMensajeYGuardar({
+                to,
+                userId: from,
+                nombre,
+                texto: "Lo siento, no pude procesar tu imagen. Por favor intenta de nuevo.",
+                remitente: "sistema"
+            });
+            
+            return res.status(500).json({ success: false, error: "No se pudo descargar la imagen" });
+        }
 
-        case "listado_examenes":
-            const analisisExamenes = await analizarListadoExamenes(base64Image, mimeType);
-            mensajeUsuario = "📋 Listado de exámenes recibido";
-            mensajeRespuesta = `He revisado tu orden médica. ${analisisExamenes}\n\n🩺 Ofrecemos exámenes ocupacionales:\n• Virtual: $46.000\n• Presencial: $69.000\n\n¿Cuál opción prefieres?`;
-            break;
+        const arrayBuffer = await whapiRes.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const base64Image = buffer.toString('base64');
 
-        case "confirmacion_cita":
-            mensajeUsuario = "📅 Confirmación de cita recibida";
-            mensajeRespuesta = "He recibido tu confirmación de cita. Si necesitas consultar información específica sobre tu cita, por favor proporciona tu número de documento.";
-            break;
+        // 5. Clasificar la imagen
+        const tipoImagen = await clasificarImagen(base64Image, mimeType);
+        console.log(`🎯 Tipo de imagen detectado: ${tipoImagen}`);
 
-        case "documento_identidad":
-            mensajeUsuario = "🆔 Documento de identidad recibido";
-            mensajeRespuesta = "He recibido tu documento. Si necesitas consultar información sobre tu cita o realizar un examen, por favor escríbeme qué necesitas.";
-            break;
+        let mensajeContexto = "";
+        let mensajeRespuesta = "";
 
-        default: // "otro"
-            mensajeUsuario = "📷 Imagen recibida";
-            mensajeRespuesta = "He recibido tu imagen, pero no pude identificar qué tipo de documento es. ¿Podrías decirme qué necesitas o enviar el comprobante de pago si ya realizaste el examen?";
-            break;
+        // 6. Procesar según el tipo de imagen
+        switch (tipoImagen) {
+            case "comprobante_pago":
+                console.log("💰 Procesando comprobante de pago");
+                
+                const valorPago = await extraerValorPago(base64Image, mimeType);
+                const valorNumerico = valorPago.replace(/[^0-9]/g, "");
+                const valorEsValido = /^[0-9]{4,}$/.test(valorNumerico);
+
+                mensajeContexto = valorEsValido 
+                    ? `📷 Comprobante de pago recibido - Valor detectado: $${valorNumerico}`
+                    : "📷 Comprobante de pago recibido - Valor no detectado";
+
+                if (valorEsValido) {
+                    mensajeRespuesta = "Comprobante recibido correctamente. Ahora escribe SOLO tu número de documento (sin puntos ni letras).";
+                } else {
+                    mensajeRespuesta = "No pude identificar el valor en el comprobante. Por favor envía una imagen más clara del soporte de pago.";
+                }
+                break;
+
+            case "listado_examenes":
+                console.log("📋 Procesando listado de exámenes");
+                
+                const analisisExamenes = await analizarListadoExamenes(base64Image, mimeType);
+                mensajeContexto = "📋 Listado de exámenes recibido";
+                mensajeRespuesta = `He revisado tu orden médica.\n\n🩺 Nuestras opciones para exámenes ocupacionales:\n• Virtual: $46.000\n• Presencial: $69.000\n\n¿Cuál opción prefieres?`;
+                break;
+
+            case "confirmacion_cita":
+                console.log("📅 Procesando confirmación de cita");
+                
+                mensajeContexto = "📅 Confirmación de cita recibida";
+                mensajeRespuesta = "He recibido tu confirmación de cita. Para consultar información específica, proporciona tu número de documento.";
+                break;
+
+            case "documento_identidad":
+                console.log("🆔 Procesando documento de identidad");
+                
+                mensajeContexto = "🆔 Documento de identidad recibido";
+                mensajeRespuesta = "He recibido tu documento. ¿Necesitas consultar información sobre tu cita o realizar un examen médico?";
+                break;
+
+            default: // "otro"
+                console.log("❓ Imagen no identificada");
+                
+                mensajeContexto = "📷 Imagen recibida - Tipo no identificado";
+                mensajeRespuesta = "He recibido tu imagen, pero no pude identificar qué tipo de documento es. ¿Podrías explicarme qué necesitas?";
+                break;
+        }
+
+        // 7. Guardar el contexto de la imagen procesada
+        await enviarMensajeYGuardar({
+            to: null, // Solo guardar, no enviar
+            userId: from,
+            nombre,
+            texto: mensajeContexto,
+            remitente: "sistema"
+        });
+
+        // 8. Enviar respuesta final al usuario
+        await enviarMensajeYGuardar({
+            to,
+            userId: from,
+            nombre,
+            texto: mensajeRespuesta,
+            remitente: "sistema"
+        });
+
+        console.log(`✅ Imagen procesada exitosamente para ${from}: ${tipoImagen}`);
+
+        return res.json({
+            success: true,
+            mensaje: "Imagen procesada correctamente.",
+            tipoImagen,
+            contexto: mensajeContexto,
+            respuesta: mensajeRespuesta
+        });
+
+    } catch (error) {
+        console.error("❌ Error procesando imagen:", error);
+        
+        await enviarMensajeYGuardar({
+            to,
+            userId: from,
+            nombre,
+            texto: "Ocurrió un error procesando tu imagen. Por favor intenta de nuevo o contacta con un asesor.",
+            remitente: "sistema"
+        });
+
+        return res.status(500).json({ 
+            success: false, 
+            error: "Error interno procesando imagen",
+            details: error.message 
+        });
     }
-
-    // Guardar en historial
-    const { mensajes: mensajesHistorial = [] } = await obtenerConversacionDeWix(from);
-    const nuevoHistorial = [
-        ...mensajesHistorial,
-        { from: "usuario", mensaje: mensajeUsuario, timestamp: new Date().toISOString() },
-        { from: "sistema", mensaje: mensajeRespuesta, timestamp: new Date().toISOString() }
-    ];
-
-    await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
-
-    // Enviar respuesta si no se envió antes
-    if (tipoImagen !== "comprobante_pago" || !valorEsValido) {
-        await sendMessage(to, mensajeRespuesta);
-    }
-
-    return res.json({
-        success: true,
-        mensaje: "Imagen procesada correctamente.",
-        tipoImagen,
-        respuesta: mensajeRespuesta
-    });
 }
 
 module.exports = { procesarImagen };

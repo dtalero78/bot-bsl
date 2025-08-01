@@ -29,7 +29,7 @@ function yaSeEntregoCertificado(historial) {
     );
 }
 
-// 🆕 Función mejorada para detectar si ya se enviaron datos de pago recientemente
+// Función mejorada para detectar si ya se enviaron datos de pago recientemente
 function yaSeEnviaronDatosPago(historial) {
     const ultimosMessages = historial.slice(-5);
     return ultimosMessages.some(m =>
@@ -43,50 +43,46 @@ function yaSeEnviaronDatosPago(historial) {
     );
 }
 
-// 🆕 Función mejorada para detectar el contexto usando mensajes Y observaciones
+// Función para detectar contexto de conversación
 function detectarContextoConversacion(historial, observaciones = "") {
-    const ultimosMessages = historial.slice(-15); // Más contexto
+    const ultimosMessages = historial.slice(-10);
   
-    // Buscar si hay un comprobante de pago en el historial reciente
+    // 🆕 Buscar mensajes específicos del nuevo procesarImagen.js
     const hayComprobantePago = ultimosMessages.some(m =>
         m.mensaje.includes("📷 Comprobante de pago recibido") ||
         m.mensaje.includes("Comprobante de pago recibido") ||
         m.mensaje.includes("valor detectado") ||
         m.mensaje.includes("Valor detectado") ||
-        m.mensaje.includes("Hemos recibido tu comprobante") ||
-        m.mensaje.includes("comprobante_pago")
+        m.mensaje.includes("Hemos recibido tu comprobante")
     );
   
-    // 🆕 SOLO considerar confirmación de cita si REALMENTE hubo una imagen
     const hayConfirmacionCita = ultimosMessages.some(m =>
         (m.mensaje.includes("📅 Confirmación de cita recibida") ||
          m.mensaje.includes("Confirmación de cita recibida")) &&
-        // Verificar que realmente vino de procesamiento de imagen
         m.from === "sistema"
     );
   
-    // Buscar si hay un listado de exámenes  
     const hayListadoExamenes = ultimosMessages.some(m =>
         m.mensaje.includes("📋 Listado de exámenes recibido") ||
-        m.mensaje.includes("Listado de exámenes recibido") ||
-        m.mensaje.includes("orden médica") ||
-        m.mensaje.includes("listado_examenes")
+        m.mensaje.includes("Listado de exámenes recibido")
     );
 
-    // 🆕 Detectar si ya se consultó información recientemente
+    const hayDocumentoIdentidad = ultimosMessages.some(m =>
+        m.mensaje.includes("🆔 Documento de identidad recibido") ||
+        m.mensaje.includes("Documento de identidad recibido")
+    );
+
     const yaSeConsultoInfo = ultimosMessages.some(m =>
         m.mensaje.includes("📄 Información registrada:") ||
         m.mensaje.includes("Información registrada:")
     );
 
-    // 🆕 Detectar si ya se enviaron datos de pago (mejorado)
     const yaSeEnviaronDatos = yaSeEnviaronDatosPago(historial);
 
-    // 🆕 Leer contexto adicional de observaciones de Wix
     const observacionesContext = {
-        tienePago: observaciones.toLowerCase().includes("pagado") || observaciones.toLowerCase().includes("pago"),
+        tienePago: observaciones.toLowerCase().includes("pagado"),
         estaAtendido: observaciones.toLowerCase().includes("atendido"),
-        tieneCita: observaciones.toLowerCase().includes("cita") || observaciones.toLowerCase().includes("agendado"),
+        tieneCita: observaciones.toLowerCase().includes("cita"),
         bloqueado: observaciones.toLowerCase().includes("stop")
     };
 
@@ -94,30 +90,44 @@ function detectarContextoConversacion(historial, observaciones = "") {
         hayComprobantePago,
         hayConfirmacionCita,
         hayListadoExamenes,
+        hayDocumentoIdentidad, // 🆕 NUEVO
         yaSeConsultoInfo,
-        yaSeEnviaronDatos, // 🆕 NUEVO
-        observacionesContext, // 🆕 NUEVO
+        yaSeEnviaronDatos,
+        observacionesContext,
         contexto: hayComprobantePago ? "pago" :
                  hayConfirmacionCita ? "consulta_cita" :
-                 hayListadoExamenes ? "examenes" : 
+                 hayListadoExamenes ? "examenes" :
+                 hayDocumentoIdentidad ? "documento_enviado" : // 🆕 NUEVO
                  yaSeConsultoInfo ? "ya_consultado" :
-                 yaSeEnviaronDatos ? "datos_enviados" : // 🆕 NUEVO
+                 yaSeEnviaronDatos ? "datos_enviados" :
                  "general"
     };
 }
 
 // Función para enviar y guardar mensaje en historial
 async function enviarMensajeYGuardar({ to, userId, nombre, texto, remitente = "sistema" }) {
-    if (to) { // Solo enviar si se especifica un destinatario
-        await sendMessage(to, texto);
+    try {
+        if (to) {
+            const resultado = await sendMessage(to, texto);
+            if (!resultado.success && resultado.error) {
+                console.error(`❌ Error enviando mensaje a ${to}:`, resultado.error);
+                return { success: false, error: resultado.error };
+            }
+        }
+        
+        const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
+        const historialLimpio = limpiarDuplicados(historial);
+        const nuevoHistorial = limpiarDuplicados([
+            ...historialLimpio,
+            { from: remitente, mensaje: texto }
+        ]);
+        
+        const guardado = await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
+        return { success: true, guardado };
+    } catch (error) {
+        console.error(`❌ Error en enviarMensajeYGuardar para ${userId}:`, error.message);
+        return { success: false, error: error.message };
     }
-    const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
-    const historialLimpio = limpiarDuplicados(historial);
-    const nuevoHistorial = limpiarDuplicados([
-        ...historialLimpio,
-        { from: remitente, mensaje: texto }
-    ]);
-    await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
 }
 
 async function eliminarConversacionDeWix(userId) {
@@ -134,7 +144,7 @@ async function eliminarConversacionDeWix(userId) {
     }
 }
 
-// 🆕 Función para marcar STOP automáticamente usando tu API existente
+// Función para marcar STOP automáticamente
 async function marcarStopEnWix(userId) {
     try {
         const resp = await fetch("https://www.bsl.com.co/_functions/actualizarObservaciones", {
@@ -152,86 +162,53 @@ async function marcarStopEnWix(userId) {
     }
 }
 
-// 🆕 Función para detectar si el usuario está haciendo una corrección
+// Funciones de detección mejoradas
 function esCorreccionDeHorario(mensaje) {
     const palabrasCorreccion = [
         "equivocada", "equivocado", "mal", "error", "incorrecto", "incorrecta",
         "debe ser", "debería ser", "es a las", "son las", "no es", "no son"
     ];
-    
-    return palabrasCorreccion.some(palabra => 
-        mensaje.toLowerCase().includes(palabra)
-    );
+    return palabrasCorreccion.some(palabra => mensaje.toLowerCase().includes(palabra));
 }
 
-// 🆕 Función para detectar cuando el usuario quiere hablar con un asesor
 function quiereAsesor(mensaje) {
     const palabrasAsesor = [
         "asesor", "persona", "humano", "ayuda", "problema", "error",
-        "hablar con", "contactar", "comunicar", "equivocado", "mal"
+        "hablar con", "contactar", "comunicar"
     ];
-    
-    return palabrasAsesor.some(palabra => 
-        mensaje.toLowerCase().includes(palabra)
-    );
+    return palabrasAsesor.some(palabra => mensaje.toLowerCase().includes(palabra));
 }
 
-// 🆕 Función para detectar cuando usuario elige una opción de examen
 function eligeOpcionExamen(mensaje) {
     const mensajeLower = mensaje.toLowerCase().trim();
     const opcionesValidas = [
         "virtual", "presencial", "el virtual", "el presencial", 
         "el de 46", "el de 69", "46000", "69000", "si virtual", "si presencial"
     ];
-    
     return opcionesValidas.some(opcion => mensajeLower.includes(opcion));
 }
 
-// 🆕 Función para detectar solicitud de hacer examen (NO confirmar cita)
 function quiereHacerExamen(mensaje) {
     const palabrasExamen = [
         "examen médico", "examen ocupacional", "certificado médico", 
         "necesito un examen", "quiero un examen", "hacer un examen",
-        "examen que tenga", "optometría", "audiometría", "osteomuscular"
+        "examen", "ocupacional", "médico"
     ];
-    
-    return palabrasExamen.some(palabra => 
-        mensaje.toLowerCase().includes(palabra)
-    );
+    return palabrasExamen.some(palabra => mensaje.toLowerCase().includes(palabra));
 }
 
-// 🆕 Función para detectar preguntas sobre precios (NO solicitudes de pago)
 function esPreguntaSobrePrecios(mensaje) {
     const palabrasPrecios = [
         "cuanto vale", "cuánto vale", "cuanto cuesta", "cuánto cuesta",
         "cual es el precio", "cuál es el precio", "precio", "costo",
         "cuanto es", "cuánto es", "valor del", "costo del"
     ];
-    
-    return palabrasPrecios.some(palabra => 
-        mensaje.toLowerCase().includes(palabra)
-    );
+    return palabrasPrecios.some(palabra => mensaje.toLowerCase().includes(palabra));
 }
 
-// 🆕 Función para detectar preguntas sobre el proceso de pago
-function esPreguntaSobreProceso(mensaje) {
-    const palabrasProceso = [
-        "marca de agua", "sin marca", "cuando envie", "cuando envíe", 
-        "después del pago", "después de pagar", "una vez que pague",
-        "al pagar", "cuando pague", "que pasa", "qué pasa", "como funciona",
-        "cómo funciona", "proceso", "pasos", "después", "luego"
-    ];
-    
-    return palabrasProceso.some(palabra => 
-        mensaje.toLowerCase().includes(palabra)
-    );
-}
-
-// 🆕 Función para detectar solicitudes de pago (excluyendo preguntas sobre precios)
 function solicitaPago(mensaje) {
     const mensajeLower = mensaje.toLowerCase();
     
-    // Si es una pregunta sobre precios, NO es solicitud de pago
     if (esPreguntaSobrePrecios(mensaje)) {
         return false;
     }
@@ -241,12 +218,9 @@ function solicitaPago(mensaje) {
         "información de pago", "datos de pago", "transferir", "consignar"
     ];
     
-    return palabrasPago.some(palabra => 
-        mensajeLower.includes(palabra)
-    );
+    return palabrasPago.some(palabra => mensajeLower.includes(palabra));
 }
 
-// 🆕 Función para detectar si el bot preguntó sobre revisión del certificado
 function ultimaPreguntaFueRevision(historial) {
     const ultimosMessages = historial.slice(-3);
     return ultimosMessages.some(m =>
@@ -255,9 +229,6 @@ function ultimaPreguntaFueRevision(historial) {
     );
 }
 
-/**
-* 🆕 Función mejorada para detectar mensaje del admin - más flexible
-*/
 function ultimoMensajeFueVerificarDatos(historial) {
     const mensajesAdmin = historial.filter(m => m.from === "admin");
     if (mensajesAdmin.length === 0) return false;
@@ -266,13 +237,64 @@ function ultimoMensajeFueVerificarDatos(historial) {
     const mensajesStop = [
         "Revisa que todo esté en orden",
         "revisa que todo esté en orden", 
-        "revisa que todo este en orden",
-        "Revisa que todo este en orden",
-        "revisa que todo está en orden",
-        "Revisa que todo está en orden"
+        "revisa que todo este en orden"
     ];
     
     return mensajesStop.some(msg => ultimoMensajeAdmin.mensaje.toLowerCase().includes(msg.toLowerCase()));
+}
+
+// Función simplificada para clasificar intenciones
+function clasificarIntencion(mensaje, historial, contexto) {
+    const mensajeLower = mensaje.toLowerCase().trim();
+    
+    // 1. Prioridad máxima: Respuestas de confirmación
+    if (ultimaPreguntaFueRevision(historial)) {
+        const confirmaciones = ["si", "sí", "ya", "claro", "por supuesto", "correcto", "exacto", "afirmativo"];
+        if (confirmaciones.some(conf => mensajeLower.includes(conf))) {
+            return "confirmar_revision";
+        }
+    }
+    
+    // 2. Solicitudes de asesor
+    if (quiereAsesor(mensaje) || esCorreccionDeHorario(mensaje)) {
+        return "solicitar_asesor";
+    }
+    
+    // 3. Elección de opción de examen
+    if (eligeOpcionExamen(mensaje)) {
+        return "elegir_opcion_examen";
+    }
+    
+    // 4. Quiere hacer examen
+    if (quiereHacerExamen(mensaje)) {
+        return "quiere_hacer_examen";
+    }
+    
+    // 5. Preguntas sobre precios
+    if (esPreguntaSobrePrecios(mensaje)) {
+        return "pregunta_precios";
+    }
+    
+    // 6. Solicitudes de pago
+    if (solicitaPago(mensaje)) {
+        return "solicitar_pago";
+    }
+    
+    // 7. Solo cédula - 🆕 LÓGICA MEJORADA
+    if (esCedula(mensaje)) {
+        if (contexto.hayComprobantePago) return "solicitar_certificado";
+        if (contexto.hayConfirmacionCita) return "confirmar_cita";
+        if (contexto.hayDocumentoIdentidad) return "aclarar_necesidad"; // 🆕 NUEVO
+        return "cedula_sola";
+    }
+    
+    // 8. 🆕 NUEVO: Respuesta a documento de identidad enviado
+    if (contexto.hayDocumentoIdentidad && !esCedula(mensaje)) {
+        return "respuesta_documento_enviado";
+    }
+    
+    // 9. Consulta general por defecto
+    return "consulta_general";
 }
 
 async function procesarTexto(message, res) {
@@ -293,31 +315,21 @@ async function procesarTexto(message, res) {
         await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
     }
 
-    // 2. Obtener historial actualizado y limpiar duplicados
+    // 2. Obtener historial actualizado
     const { mensajes: mensajesHistorial = [], observaciones = "" } = await obtenerConversacionDeWix(from);
     const historialLimpio = limpiarDuplicados(mensajesHistorial);
 
-    console.log("📝 Historial recuperado de Wix para", from, ":", JSON.stringify(historialLimpio, null, 2));
-
-    // --- FILTRO para evitar repetir el certificado ---
-    if (yaSeEntregoCertificado(historialLimpio)) {
-        await sendMessage(to, "Ya tienes tu certificado. Si necesitas otra cosa, dime por favor.");
-        return res.json({ success: true, mensaje: "Certificado ya entregado." });
-    }
+    console.log("📝 Historial recuperado:", JSON.stringify(historialLimpio.slice(-5), null, 2));
 
     // 3. Verificar si el usuario está bloqueado
     if (String(observaciones).toLowerCase().includes("stop")) {
-        return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones (silencioso)." });
+        return res.json({ success: true, mensaje: "Usuario bloqueado." });
     }
 
-    // 4. 🆕 NUEVA LÓGICA: Marcar STOP automáticamente cuando admin dice el mensaje
+    // 4. Marcar STOP automáticamente cuando admin dice el mensaje
     if (ultimoMensajeFueVerificarDatos(historialLimpio)) {
-        console.log("🛑 Detectado mensaje del ADMIN - Marcando STOP automáticamente para:", from);
-        
-        // Marcar STOP usando la API existente
+        console.log("🛑 Detectado mensaje del ADMIN - Marcando STOP");
         await marcarStopEnWix(from);
-        
-        // Opcional: enviar mensaje de confirmación al usuario antes del bloqueo
         await enviarMensajeYGuardar({
             to,
             userId: from,
@@ -325,101 +337,25 @@ async function procesarTexto(message, res) {
             texto: "Gracias por la información. Un asesor revisará tu caso y te contactará pronto.",
             remitente: "sistema"
         });
-        
-        return res.json({ success: true, mensaje: "Usuario marcado como STOP automáticamente tras mensaje del admin" });
+        return res.json({ success: true, mensaje: "Usuario marcado como STOP" });
     }
 
-    // 5. 🆕 Detectar contexto de la conversación (incluyendo observaciones)
+    // 5. Detectar contexto
     const contextoInfo = detectarContextoConversacion(historialLimpio, observaciones);
     console.log("🎯 Contexto detectado:", contextoInfo);
-    console.log("📋 Observaciones de Wix:", observaciones);
 
-    // 6. Preparar contexto
+    // 6. Preparar contexto para clasificación
     const ultimaCedula = [...historialLimpio].reverse().find(m => esCedula(m.mensaje))?.mensaje || null;
 
-    const contextoConversacion = historialLimpio
-        .slice(-25)
-        .map(m => `${m.from}: ${m.mensaje}`)
-        .join('\n');
-
-    // 7. 🆕 Mejorar clasificación de intención con más contexto
-    const promptClasificadorMejorado = `
-    Clasifica la intención del último mensaje del usuario basándote en el contexto completo de la conversación.
-    
-    Contexto automático detectado: ${contextoInfo.contexto}
-    Última cédula en historial: ${ultimaCedula ? "SÍ" : "NO"}
-    Ya se consultó información: ${contextoInfo.yaSeConsultoInfo ? "SÍ" : "NO"}
-    Bot preguntó por revisión de certificado: ${ultimaPreguntaFueRevision(historialLimpio) ? "SÍ" : "NO"}
-    Ya se enviaron datos de pago: ${contextoInfo.yaSeEnviaronDatos ? "SÍ" : "NO"}
-    Observaciones Wix: ${observaciones || "ninguna"}
-    
-    OPCIONES DE RESPUESTA (responde SOLO la etiqueta):
-    - confirmar_cita: Usuario quiere consultar información de su cita médica (SOLO si no se consultó antes)
-    - solicitar_certificado: Usuario quiere su certificado médico después de pagar  
-    - aprobar_certificado: Usuario confirma/aprueba su certificado (respuestas como "sí", "apruebo", "está bien", "correcto")
-    - solicitar_pago: Usuario quiere información de pago o datos para transferir/pagar
-    - confirmar_revision: Usuario da CUALQUIER respuesta afirmativa confirmando que ya revisó el certificado 
-      (incluye "si", "sí", "ya", "claro", "por supuesto", "desde luego", "obvio", "correcto", "exacto", etc.)
-    - pregunta_proceso: Usuario pregunta sobre el proceso después del pago, marca de agua, pasos siguientes
-    - pregunta_precios: Usuario pregunta sobre costos, precios, "cuánto vale", "cuánto cuesta", valores de servicios
-    - correccion_datos: Usuario indica que hay un error en los datos mostrados (palabras como "equivocado", "mal", "error", "debe ser")
-    - solicitar_asesor: Usuario quiere hablar con una persona o reportar un problema
-    - consulta_general: Preguntas generales sobre servicios, horarios
-    - sin_intencion_clara: No se puede determinar la intención claramente
-    
-    REGLAS ESPECIALES:
-    - Si usuario pregunta "cuánto vale", "cuánto cuesta", "precio", "costo" = pregunta_precios (NO solicitar_pago)
-    - Si ya se enviaron datos de pago y usuario pregunta sobre proceso/marca de agua/pasos = pregunta_proceso
-    - Si ya se enviaron datos de pago y usuario insiste o pregunta por pago = pregunta_proceso
-    - Si bot preguntó "¿Ya revisaste el certificado?" y usuario da CUALQUIER respuesta afirmativa = confirmar_revision
-      (Incluye: "si", "sí", "ya", "claro", "por supuesto", "desde luego", "obvio", "afirmativo", "correcto", "exacto", etc.)
-    - Si usuario menciona "quiero pagar", "datos para pagar", "cómo pago" pero NO se han enviado datos = solicitar_pago
-    - Si ya se consultó información y el usuario dice que está mal = correccion_datos
-    - Si hay comprobante de pago + cédula en historial = solicitar_certificado
-    - Si hay confirmación de cita + cédula = confirmar_cita (SOLO si no se consultó antes)
-    - Si el admin preguntó por aprobación = aprobar_certificado
-    - Si usuario menciona "asesor", "problema", "error" = solicitar_asesor
-    - Si ya se mostró información y usuario envía solo cédula = correccion_datos o solicitar_asesor
-    
-    Contexto de los últimos mensajes:
-    ${contextoConversacion}
-    
-    Último mensaje del usuario: "${userMessage}"
-    
-    Responde únicamente con una de las etiquetas de las opciones.
-    `;
-
-    const clasificacion = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${process.env.OPENAI_KEY}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            model: 'gpt-4o',
-            messages: [
-                { role: 'system', content: promptClasificadorMejorado },
-                { role: 'user', content: contextoConversacion }
-            ],
-            max_tokens: 20
-        })
-    });
-
-    const resultadoClasificacion = await clasificacion.json();
-    const intencion = resultadoClasificacion?.choices?.[0]?.message?.content?.trim() || "sin_intencion_clara";
-
+    // 7. Clasificar intención con lógica simplificada
+    const intencion = clasificarIntencion(userMessage, historialLimpio, contextoInfo);
     console.log("🎯 Intención clasificada:", intencion);
-    console.log("🎯 Contexto:", contextoInfo.contexto);
-    console.log("💡 Es pregunta sobre precios:", esPreguntaSobrePrecios(userMessage));
-    console.log("💡 Es solicitud de pago:", solicitaPago(userMessage));
-    console.log("💡 Quiere hacer examen:", quiereHacerExamen(userMessage));
-    console.log("💡 Elige opción examen:", eligeOpcionExamen(userMessage));
 
-    // 8. 🆕 MANEJO ESPECÍFICO POR CONTEXTO E INTENCIÓN
+    // 8. MANEJO ESPECÍFICO POR INTENCIÓN
 
-    // 🚨 NUEVO: Manejar cuando usuario quiere HACER un examen (no confirmar cita)
-    if (intencion === "quiere_hacer_examen" || quiereHacerExamen(userMessage)) {
-        console.log("🩺 Usuario quiere HACER un examen médico ocupacional");
+    // Usuario quiere HACER un examen
+    if (intencion === "quiere_hacer_examen") {
+        console.log("🩺 Usuario quiere HACER un examen médico");
         
         await enviarMensajeYGuardar({
             to,
@@ -432,27 +368,27 @@ async function procesarTexto(message, res) {
         return res.json({ success: true, mensaje: "Opciones de examen enviadas" });
     }
 
-    // 🚨 NUEVO: Manejar cuando usuario elige opción Virtual o Presencial
-    if (intencion === "elegir_opcion_examen" || eligeOpcionExamen(userMessage)) {
+    // Usuario elige opción Virtual o Presencial
+    if (intencion === "elegir_opcion_examen") {
         const esVirtual = userMessage.toLowerCase().includes("virtual") || userMessage.toLowerCase().includes("46");
         
-        console.log(`🎯 Usuario eligió opción: ${esVirtual ? "Virtual" : "Presencial"}`);
+        console.log(`🎯 Usuario eligió: ${esVirtual ? "Virtual" : "Presencial"}`);
         
         if (esVirtual) {
             const detallesVirtual = `📱 **Examen Virtual - $46.000 COP**
 
 📅 **Horario:** 7am a 7pm, todos los días
-⏱️ **Duración:** 35 minutos total (25 min pruebas + 10 min consulta médica)
+⏱️ **Duración:** 35 minutos total
 
 📋 **Incluye:**
 • Médico osteomuscular
 • Audiometría 
 • Optometría
 
-🔗 **Para agendar tu hora:**
+🔗 **Para agendar:**
 https://www.bsl.com.co/nuevaorden-1
 
-Una vez termines el examen, el médico revisará y aprobará tu certificado. Después pagas y lo descargas al instante.`;
+Después pagas y descargas el certificado al instante.`;
 
             await enviarMensajeYGuardar({
                 to,
@@ -469,12 +405,9 @@ Una vez termines el examen, el médico revisará y aprobará tu certificado. Des
 • Lunes a viernes: 7:30am-4:30pm
 • Sábados: 8am-11:30am
 
-📋 **Incluye:**
-• Médico osteomuscular
-• Audiometría 
-• Optometría
+📋 **Incluye lo mismo que el virtual**
 
-ℹ️ **No requiere agendar** - Es por orden de llegada`;
+ℹ️ **No requiere agendar** - Por orden de llegada`;
 
             await enviarMensajeYGuardar({
                 to,
@@ -485,12 +418,12 @@ Una vez termines el examen, el médico revisará y aprobará tu certificado. Des
             });
         }
         
-        return res.json({ success: true, mensaje: `Detalles de examen ${esVirtual ? "virtual" : "presencial"} enviados` });
+        return res.json({ success: true, mensaje: "Detalles enviados" });
     }
 
-    // 🚨 NUEVO: Manejar preguntas sobre precios
-    if (intencion === "pregunta_precios" || esPreguntaSobrePrecios(userMessage)) {
-        console.log("💰 Usuario pregunta sobre precios de servicios");
+    // Preguntas sobre precios
+    if (intencion === "pregunta_precios") {
+        console.log("💰 Usuario pregunta sobre precios");
         
         await enviarMensajeYGuardar({
             to,
@@ -500,34 +433,12 @@ Una vez termines el examen, el médico revisará y aprobará tu certificado. Des
             remitente: "sistema"
         });
         
-        return res.json({ success: true, mensaje: "Información de precios enviada" });
+        return res.json({ success: true, mensaje: "Precios enviados" });
     }
 
-    // 🚨 NUEVO: Manejar preguntas sobre el proceso después del pago
-    if (intencion === "pregunta_proceso" || 
-        (contextoInfo.yaSeEnviaronDatos && esPreguntaSobreProceso(userMessage))) {
-        
-        console.log("❓ Usuario pregunta sobre el proceso después del pago");
-        
-        await enviarMensajeYGuardar({
-            to,
-            userId: from,
-            nombre,
-            texto: "Una vez envíes tu comprobante de pago y número de documento, procesamos tu certificado sin marca de agua y te lo enviamos inmediatamente por este mismo chat.",
-            remitente: "sistema"
-        });
-        
-        return res.json({ success: true, mensaje: "Pregunta sobre proceso respondida" });
-    }
-
-    // 🚨 NUEVO: Manejar confirmación de revisión de certificado
-    // Usar clasificador principal + lógica de respaldo para confirmaciones
-    if (intencion === "confirmar_revision" || 
-        intencion === "aprobar_certificado" ||
-        (ultimaPreguntaFueRevision(historialLimpio) && 
-         (intencion === "consulta_general" || intencion === "sin_intencion_clara"))) {
-        
-        console.log("💳 Usuario confirmó que ya revisó el certificado - enviando datos de pago");
+    // Confirmación de revisión de certificado
+    if (intencion === "confirmar_revision") {
+        console.log("💳 Usuario confirmó revisión - enviando datos de pago");
         
         const datosPago = `💳 **Datos para el pago:**
 
@@ -546,14 +457,12 @@ Envía SOLO tu comprobante de pago por aquí`;
             remitente: "sistema"
         });
         
-        return res.json({ success: true, mensaje: "Datos de pago enviados tras confirmación" });
+        return res.json({ success: true, mensaje: "Datos de pago enviados" });
     }
 
-    // 🚨 NUEVO: Manejar solicitudes de pago (SOLO si no se enviaron recientemente)
-    if ((intencion === "solicitar_pago" || solicitaPago(userMessage)) && 
-        !contextoInfo.yaSeEnviaronDatos) {
-        
-        console.log("💰 Usuario solicita información de pago");
+    // Solicitudes de pago (sin datos enviados recientemente)
+    if (intencion === "solicitar_pago" && !contextoInfo.yaSeEnviaronDatos) {
+        console.log("💰 Usuario solicita pago");
         
         await enviarMensajeYGuardar({
             to,
@@ -563,14 +472,12 @@ Envía SOLO tu comprobante de pago por aquí`;
             remitente: "sistema"
         });
         
-        return res.json({ success: true, mensaje: "Pregunta sobre revisión de certificado enviada" });
+        return res.json({ success: true, mensaje: "Pregunta sobre revisión enviada" });
     }
 
-    // 🚨 NUEVO: Manejar correcciones de datos
-    if (intencion === "correccion_datos" || intencion === "solicitar_asesor" || 
-        (contextoInfo.yaSeConsultoInfo && (esCorreccionDeHorario(userMessage) || quiereAsesor(userMessage)))) {
-        
-        console.log("🔧 Usuario reporta error en datos o solicita asesor");
+    // Solicitudes de asesor o correcciones
+    if (intencion === "solicitar_asesor") {
+        console.log("🔧 Transferir a asesor");
         
         await enviarMensajeYGuardar({
             to,
@@ -580,27 +487,12 @@ Envía SOLO tu comprobante de pago por aquí`;
             remitente: "sistema"
         });
         
-        return res.json({ success: true, mensaje: "Transferido a asesor por corrección de datos" });
+        return res.json({ success: true, mensaje: "Transferido a asesor" });
     }
 
-    // 🚨 NUEVO: Evitar bucle si ya se consultó información
-    if (contextoInfo.yaSeConsultoInfo && esCedula(userMessage)) {
-        console.log("🔄 Evitando bucle - ya se consultó información para esta cédula");
-        
-        await enviarMensajeYGuardar({
-            to,
-            userId: from,
-            nombre,
-            texto: "Ya consulté tu información. Si hay algún error o necesitas ayuda adicional, te transfiero con un asesor. ...transfiriendo con asesor",
-            remitente: "sistema"
-        });
-        
-        return res.json({ success: true, mensaje: "Evitado bucle infinito - transferido a asesor" });
-    }
-
-    // CONTEXTO: Usuario envió confirmación de cita + cédula (SOLO si realmente hubo imagen)
+    // CONTEXTO: Usuario envió confirmación de cita + cédula
     if (contextoInfo.contexto === "consulta_cita" && ultimaCedula && !contextoInfo.yaSeConsultoInfo) {
-        console.log("📅 Procesando consulta de cita con cédula (imagen confirmada):", ultimaCedula);
+        console.log("📅 Procesando consulta de cita:", ultimaCedula);
       
         await enviarMensajeYGuardar({
             to,
@@ -620,13 +512,12 @@ Envía SOLO tu comprobante de pago por aquí`;
                     texto: "...transfiriendo con asesor",
                     remitente: "sistema"
                 });
-                return res.json({ success: true });
             } else {
                 const datos = info[0];
                 const opcionesFecha = {
                     timeZone: "America/Bogota",
                     day: "2-digit",
-                    month: "long",
+                    month: "long", 
                     year: "numeric",
                     hour: "numeric",
                     minute: "2-digit",
@@ -638,11 +529,7 @@ Envía SOLO tu comprobante de pago por aquí`;
                 const resumen = `📄 Información registrada:\n👤 ${datos.primerNombre} ${datos.primerApellido}\n📅 Fecha consulta: ${fechaAtencion}\n📲 Celular: ${datos.celular || "No disponible"}`;
               
                 await sendMessage(to, resumen);
-               
                 await eliminarConversacionDeWix(from);
-                console.log("🗑️ Historial eliminado después de consultar cita para:", from);
-               
-                return res.json({ success: true });
             }
         } catch (err) {
             console.error("Error consultando información:", err);
@@ -653,13 +540,13 @@ Envía SOLO tu comprobante de pago por aquí`;
                 texto: "...transfiriendo con asesor",
                 remitente: "sistema"
             });
-            return res.json({ success: true });
         }
+        return res.json({ success: true });
     }
 
     // CONTEXTO: Usuario envió comprobante de pago + cédula 
     if (contextoInfo.contexto === "pago" && ultimaCedula) {
-        console.log("💰 Procesando generación de certificado con cédula:", ultimaCedula);
+        console.log("💰 Procesando certificado con cédula:", ultimaCedula);
       
         await enviarMensajeYGuardar({
             to,
@@ -670,34 +557,29 @@ Envía SOLO tu comprobante de pago por aquí`;
         });
 
         try {
-            // Verificar si el paciente ya fue atendido antes de generar certificado
             const infoPaciente = await consultarInformacionPaciente(ultimaCedula);
             
             if (infoPaciente && infoPaciente.length > 0) {
                 const paciente = infoPaciente[0];
                 
-                // Si ya está atendido, generar certificado directamente
                 if (paciente.atendido === "ATENDIDO") {
                     await marcarPagado(ultimaCedula);
                     const pdfUrl = await generarPdfDesdeApi2Pdf(ultimaCedula);
                     await sendPdf(to, pdfUrl, ultimaCedula);
                     await eliminarConversacionDeWix(from);
-                    console.log("✅ Certificado generado automáticamente tras pago");
                     return res.json({ success: true });
                 } else {
-                    // Si no está atendido, solo marcar como pagado y transferir
                     await marcarPagado(ultimaCedula);
                     await enviarMensajeYGuardar({
                         to,
                         userId: from,
                         nombre,
-                        texto: "Pago registrado correctamente. Un asesor te contactará para continuar con el proceso.",
+                        texto: "Pago registrado. Un asesor te contactará para continuar.",
                         remitente: "sistema"
                     });
                     return res.json({ success: true });
                 }
             } else {
-                // No se encontró información del paciente
                 await enviarMensajeYGuardar({
                     to,
                     userId: from,
@@ -708,7 +590,7 @@ Envía SOLO tu comprobante de pago por aquí`;
                 return res.json({ success: true });
             }
         } catch (err) {
-            console.error("Error generando o enviando PDF:", err);
+            console.error("Error generando PDF:", err);
             await enviarMensajeYGuardar({
                 to,
                 userId: from,
@@ -720,51 +602,20 @@ Envía SOLO tu comprobante de pago por aquí`;
         }
     }
 
-    // 9. 🆕 Manejo mejorado de intención: APROBAR CERTIFICADO
-    if (intencion === "aprobar_certificado") {
-        if (ultimaCedula) {
-            try {
-                const infoPaciente = await consultarInformacionPaciente(ultimaCedula);
-                
-                if (infoPaciente && infoPaciente.length > 0) {
-                    const paciente = infoPaciente[0];
-                    
-                    if (paciente.atendido === "ATENDIDO" && (!paciente.pvEstado || paciente.pvEstado === "")) {
-                        await marcarPagado(ultimaCedula);
-                        const pdfUrl = await generarPdfDesdeApi2Pdf(ultimaCedula);
-                        await sendPdf(to, pdfUrl, ultimaCedula);
-                        await eliminarConversacionDeWix(from);
-                        return res.json({ success: true, mensaje: "Certificado generado tras aprobación" });
-                    }
-                }
-            } catch (err) {
-                console.error("Error procesando aprobación:", err);
-            }
-        }
-        
-        await enviarMensajeYGuardar({
-            to,
-            userId: from,
-            nombre,
-            texto: "...transfiriendo con asesor",
-            remitente: "sistema"
-        });
-        return res.json({ success: true });
-    }
-
-    // 10. Manejo de intención: CONFIRMAR CITA (cuando no hay contexto específico y NO se consultó antes)
+    // Confirmar cita cuando no hay contexto específico
     if (intencion === "confirmar_cita" && !contextoInfo.yaSeConsultoInfo) {
         if (!ultimaCedula) {
             await enviarMensajeYGuardar({
                 to,
                 userId: from,
                 nombre,
-                texto: "Por favor indícame tu número de documento para poder confirmar tu cita.",
+                texto: "Por favor indícame tu número de documento para confirmar tu cita.",
                 remitente: "sistema"
             });
             return res.json({ success: true });
         }
 
+        // Resto de la lógica de confirmación de cita...
         await enviarMensajeYGuardar({
             to,
             userId: from,
@@ -788,7 +639,7 @@ Envía SOLO tu comprobante de pago por aquí`;
                 timeZone: "America/Bogota",
                 day: "2-digit",
                 month: "long",
-                year: "numeric",
+                year: "numeric", 
                 hour: "numeric",
                 minute: "2-digit",
                 hour12: true
@@ -798,16 +649,13 @@ Envía SOLO tu comprobante de pago por aquí`;
                 : "No registrada";
             const resumen = `📄 Información registrada:\n👤 ${datos.primerNombre} ${datos.primerApellido}\n📅 Fecha consulta: ${fechaAtencion}\n📲 Celular: ${datos.celular || "No disponible"}`;
             await sendMessage(to, resumen);
-           
             await eliminarConversacionDeWix(from);
-            console.log("🗑️ Historial eliminado después de consultar cita para:", from);
         }
-
         return res.json({ success: true });
     }
 
-    // 11. Si el usuario solo envía cédula sin contexto Y no se ha consultado antes
-    if (esCedula(userMessage) && contextoInfo.contexto === "general" && !contextoInfo.yaSeConsultoInfo) {
+    // Solo cédula sin contexto
+    if (intencion === "cedula_sola") {
         await enviarMensajeYGuardar({
             to,
             userId: from,
@@ -818,7 +666,7 @@ Envía SOLO tu comprobante de pago por aquí`;
         return res.json({ success: true });
     }
 
-    // 12. Chat normal con OpenAI
+    // Chat normal con OpenAI como fallback
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: 'POST',
         headers: {
@@ -829,26 +677,26 @@ Envía SOLO tu comprobante de pago por aquí`;
             model: 'gpt-4o',
             messages: [
                 { role: 'system', content: promptInstitucional },
-                ...historialLimpio.map(m => ({
+                ...historialLimpio.slice(-10).map(m => ({
                     role: m.from === "usuario" ? "user" : "assistant",
                     content: m.mensaje
                 })),
                 { role: 'user', content: userMessage }
             ],
-            max_tokens: 200
+            max_tokens: 150
         })
     });
 
     const openaiJson = await aiRes.json();
-    const respuestaBot = openaiJson.choices?.[0]?.message?.content || "No se obtuvo respuesta de OpenAI.";
-    console.log("🟢 OpenAI response:", JSON.stringify(openaiJson, null, 2));
+    const respuestaBot = openaiJson.choices?.[0]?.message?.content || "No se obtuvo respuesta.";
 
-    const nuevoHistorial = limpiarDuplicados([
-        ...historialLimpio,
-        { from: "sistema", mensaje: respuestaBot }
-    ]);
-    await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial });
-    await sendMessage(to, respuestaBot);
+    await enviarMensajeYGuardar({
+        to,
+        userId: from,
+        nombre,
+        texto: respuestaBot,
+        remitente: "sistema"
+    });
 
     return res.json({ success: true, respuesta: respuestaBot });
 }
