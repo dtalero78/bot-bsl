@@ -23,28 +23,30 @@ function limpiarDuplicados(historial) {
     });
 }
 
-// Función para enviar y guardar mensaje
-async function enviarMensajeYGuardar({ to, userId, nombre, texto, remitente = "sistema", fase = "inicial" }) {
+// Función simple: solo enviar mensaje + guardar historial (SIN fetch adicional)
+async function simpleEnviarYGuardar(to, userId, nombre, texto, historial, fase = "inicial") {
     try {
+        // 1. Enviar mensaje
         if (to) {
             const resultado = await sendMessage(to, texto);
-            if (!resultado.success && resultado.error) {
-                console.error(`❌ Error enviando mensaje a ${to}:`, resultado.error);
+            if (!resultado.success) {
+                console.error(`❌ Error enviando mensaje: ${resultado.error}`);
+                return false;
             }
         }
         
-        const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
-        const historialLimpio = limpiarDuplicados(historial);
+        // 2. Agregar mensaje al historial sin hacer fetch adicional
         const nuevoHistorial = limpiarDuplicados([
-            ...historialLimpio,
-            { from: remitente, mensaje: texto, timestamp: new Date().toISOString() }
+            ...historial,
+            { from: "sistema", mensaje: texto, timestamp: new Date().toISOString() }
         ]);
         
+        // 3. Guardar
         await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial, fase });
-        return { success: true };
+        return true;
     } catch (error) {
-        console.error(`❌ Error en enviarMensajeYGuardar para ${userId}:`, error.message);
-        return { success: false, error: error.message };
+        console.error(`❌ Error en simpleEnviarYGuardar:`, error);
+        return false;
     }
 }
 
@@ -85,15 +87,8 @@ async function manejarFaseInicial(message, res, historial) {
         const openaiJson = await aiRes.json();
         const respuestaBot = openaiJson.choices?.[0]?.message?.content || "¿En qué puedo ayudarte con los exámenes médicos?";
 
-        await enviarMensajeYGuardar({
-            to,
-            userId: from,
-            nombre,
-            texto: respuestaBot,
-            remitente: "sistema",
-            fase: "inicial"
-        });
-
+        // Enviar respuesta
+        await simpleEnviarYGuardar(to, from, nombre, respuestaBot, historial, "inicial");
         return res.json({ success: true, respuesta: respuestaBot, fase: "inicial" });
 
     } catch (error) {
@@ -101,15 +96,7 @@ async function manejarFaseInicial(message, res, historial) {
         
         const respuestaFallback = "🩺 Nuestras opciones de exámenes ocupacionales:\n• Virtual: $46.000\n• Presencial: $69.000\n\n¿Cuál te interesa más?";
         
-        await enviarMensajeYGuardar({
-            to,
-            userId: from,
-            nombre,
-            texto: respuestaFallback,
-            remitente: "sistema",
-            fase: "inicial"
-        });
-
+        await simpleEnviarYGuardar(to, from, nombre, respuestaFallback, historial, "inicial");
         return res.json({ success: true, respuesta: respuestaFallback, fase: "inicial" });
     }
 }
@@ -126,19 +113,10 @@ async function manejarPostAgendamiento(message, res, historial) {
 
     console.log("🎯 FASE POST-AGENDAMIENTO: Usando menús numerados");
 
-    // Si el usuario no ha elegido opción o eligió opción inválida, mostrar menú
+    // Si el usuario no eligió opción numérica válida, mostrar menú
     if (!esOpcionNumerica(userMessage, 5)) {
         const opciones = getOpcionesPostAgendamiento();
-        
-        await enviarMensajeYGuardar({
-            to,
-            userId: from,
-            nombre,
-            texto: opciones,
-            remitente: "sistema",
-            fase: "post_agendamiento"
-        });
-
+        await simpleEnviarYGuardar(to, from, nombre, opciones, historial, "post_agendamiento");
         return res.json({ success: true, mensaje: "Menú post-agendamiento mostrado", fase: "post_agendamiento" });
     }
 
@@ -148,44 +126,25 @@ async function manejarPostAgendamiento(message, res, historial) {
 
     switch (opcion) {
         case 1: // ¿A qué hora quedó mi cita?
-            respuesta = "Para consultar el horario de tu cita, necesitaría tu número de documento. Por favor escríbelo (solo números, sin puntos).";
+            respuesta = "Para consultar el horario de tu cita, necesito tu número de documento. Por favor escríbelo (solo números, sin puntos).";
             break;
-
         case 2: // Problemas con la aplicación
-            respuesta = "Para problemas técnicos con la aplicación:\n\n✅ Intenta recargar la página\n✅ Limpia el caché del navegador\n✅ Usa Chrome o Safari actualizados\n\n¿Solucionó tu problema?";
+            respuesta = "Para problemas técnicos:\n\n✅ Recarga la página\n✅ Limpia el caché\n✅ Usa Chrome o Safari actualizados\n\n¿Se solucionó?";
             break;
-
-        case 3: // No me funciona el formulario
-            respuesta = "Si el formulario no funciona:\n\n1️⃣ Verifica tu conexión a internet\n2️⃣ Completa todos los campos obligatorios\n3️⃣ Revisa que el formato de datos sea correcto\n\n¿Necesitas más ayuda específica?";
+        case 3: // No funciona el formulario
+            respuesta = "Si el formulario no funciona:\n\n1️⃣ Verifica tu conexión\n2️⃣ Completa todos los campos\n3️⃣ Revisa el formato de datos\n\n¿Necesitas más ayuda?";
             break;
-
-        case 4: // Se me cerró la aplicación
-            respuesta = "Si se cerró la aplicación:\n\n📱 Vuelve a ingresar al link que te enviamos\n💾 Tus datos se guardan automáticamente\n🔄 Puedes continuar donde quedaste\n\n¿Pudiste ingresar nuevamente?";
+        case 4: // Se cerró la aplicación
+            respuesta = "Si se cerró:\n\n📱 Vuelve al link\n💾 Tus datos se guardan automáticamente\n🔄 Continúa donde quedaste\n\n¿Pudiste ingresar?";
             break;
-
-        case 5: // Hablar con un asesor
+        case 5: // Hablar con asesor
             respuesta = "...transfiriendo con asesor";
             break;
-
         default:
             respuesta = getOpcionesPostAgendamiento();
     }
 
-    await enviarMensajeYGuardar({
-        to,
-        userId: from,
-        nombre,
-        texto: respuesta,
-        remitente: "sistema",
-        fase: "post_agendamiento"
-    });
-
-    // Si eligió consultar cita (opción 1) y necesita cédula
-    if (opcion === 1) {
-        // Esperar a que envíe la cédula en el siguiente mensaje
-        return res.json({ success: true, mensaje: "Solicitando número de documento", fase: "post_agendamiento" });
-    }
-
+    await simpleEnviarYGuardar(to, from, nombre, respuesta, historial, "post_agendamiento");
     return res.json({ success: true, respuesta, fase: "post_agendamiento" });
 }
 
@@ -204,16 +163,7 @@ async function manejarRevisionCertificado(message, res, historial) {
     // Si no es opción numérica válida, mostrar menú de revisión
     if (!esOpcionNumerica(userMessage, 4)) {
         const opciones = getOpcionesRevisionCertificado();
-        
-        await enviarMensajeYGuardar({
-            to,
-            userId: from,
-            nombre,
-            texto: opciones,
-            remitente: "sistema",
-            fase: "revision_certificado"
-        });
-
+        await simpleEnviarYGuardar(to, from, nombre, opciones, historial, "revision_certificado");
         return res.json({ success: true, mensaje: "Menú de revisión mostrado", fase: "revision_certificado" });
     }
 
@@ -233,32 +183,20 @@ async function manejarRevisionCertificado(message, res, historial) {
 Envía SOLO tu comprobante de pago por aquí`;
             nuevaFase = "pago";
             break;
-
-        case 2: // Hay un error que corregir
+        case 2: // Hay error
             respuesta = "...transfiriendo con asesor";
             break;
-
-        case 3: // No he podido revisarlo
-            respuesta = "Te ayudo a revisar tu certificado:\n\n1️⃣ Verifica tu email (también spam)\n2️⃣ Descarga el PDF adjunto\n3️⃣ Revisa que tus datos estén correctos\n\n¿Pudiste encontrarlo?";
+        case 3: // No pudo revisarlo
+            respuesta = "Para revisar tu certificado:\n\n1️⃣ Verifica tu email (también spam)\n2️⃣ Descarga el PDF\n3️⃣ Revisa tus datos\n\n¿Lo encontraste?";
             break;
-
-        case 4: // Hablar con un asesor
+        case 4: // Hablar con asesor
             respuesta = "...transfiriendo con asesor";
             break;
-
         default:
             respuesta = getOpcionesRevisionCertificado();
     }
 
-    await enviarMensajeYGuardar({
-        to,
-        userId: from,
-        nombre,
-        texto: respuesta,
-        remitente: "sistema",
-        fase: nuevaFase
-    });
-
+    await simpleEnviarYGuardar(to, from, nombre, respuesta, historial, nuevaFase);
     return res.json({ success: true, respuesta, fase: nuevaFase });
 }
 
@@ -276,14 +214,7 @@ async function manejarPago(message, res, historial) {
 
     // Si envía cédula para procesar pago
     if (esCedula(userMessage)) {
-        await enviarMensajeYGuardar({
-            to,
-            userId: from,
-            nombre,
-            texto: "🔍 Un momento por favor...",
-            remitente: "sistema",
-            fase: "pago"
-        });
+        await simpleEnviarYGuardar(to, from, nombre, "🔍 Un momento por favor...", historial, "pago");
 
         try {
             const infoPaciente = await consultarInformacionPaciente(userMessage);
@@ -295,64 +226,24 @@ async function manejarPago(message, res, historial) {
                     await marcarPagado(userMessage);
                     const pdfUrl = await generarPdfDesdeApi2Pdf(userMessage);
                     await sendPdf(to, pdfUrl, userMessage);
-                    
-                    // Marcar como completado
-                    await enviarMensajeYGuardar({
-                        to: null,
-                        userId: from,
-                        nombre,
-                        texto: "Proceso completado exitosamente",
-                        remitente: "sistema",
-                        fase: "completado"
-                    });
-                    
                     return res.json({ success: true, mensaje: "Certificado enviado", fase: "completado" });
                 } else {
                     await marcarPagado(userMessage);
-                    await enviarMensajeYGuardar({
-                        to,
-                        userId: from,
-                        nombre,
-                        texto: "Pago registrado. Un asesor te contactará para continuar.",
-                        remitente: "sistema",
-                        fase: "pago"
-                    });
+                    await simpleEnviarYGuardar(to, from, nombre, "Pago registrado. Un asesor te contactará para continuar.", historial, "pago");
                     return res.json({ success: true, mensaje: "Pago registrado", fase: "pago" });
                 }
             } else {
-                await enviarMensajeYGuardar({
-                    to,
-                    userId: from,
-                    nombre,
-                    texto: "...transfiriendo con asesor",
-                    remitente: "sistema",
-                    fase: "pago"
-                });
+                await simpleEnviarYGuardar(to, from, nombre, "...transfiriendo con asesor", historial, "pago");
                 return res.json({ success: true, mensaje: "Transferido a asesor", fase: "pago" });
             }
         } catch (error) {
             console.error("❌ Error procesando pago:", error);
-            await enviarMensajeYGuardar({
-                to,
-                userId: from,
-                nombre,
-                texto: "...transfiriendo con asesor",
-                remitente: "sistema",
-                fase: "pago"
-            });
+            await simpleEnviarYGuardar(to, from, nombre, "...transfiriendo con asesor", historial, "pago");
             return res.json({ success: false, error: error.message, fase: "pago" });
         }
     } else {
-        // Si no es cédula, solicitar el número de documento
-        await enviarMensajeYGuardar({
-            to,
-            userId: from,
-            nombre,
-            texto: "Ahora escribe SOLO tu número de documento (sin puntos ni letras).",
-            remitente: "sistema",
-            fase: "pago"
-        });
-        
+        // Si no es cédula, solicitar número de documento
+        await simpleEnviarYGuardar(to, from, nombre, "Ahora escribe SOLO tu número de documento (sin puntos ni letras).", historial, "pago");
         return res.json({ success: true, mensaje: "Solicitando número de documento para pago", fase: "pago" });
     }
 }
