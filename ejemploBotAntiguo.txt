@@ -1,0 +1,212 @@
+let response = "";
+
+const BOT_NUMBER = "573008021701";
+
+export function post_handleInput(request) {
+    return request.body.json()
+        .then(async (body) => {
+            if (body?.statuses && Array.isArray(body.statuses)) {
+                console.log("Body recibido:", JSON.stringify(body, null, 2));
+                return {
+                    status: 200,
+                    body: { message: "Evento de estado procesado correctamente." }
+                };
+            }
+
+            if (!body || !body.messages || !Array.isArray(body.messages)) {
+                return {
+                    status: 200,
+                    body: { message: "Solicitud ignorada: el payload no contiene mensajes." }
+                };
+            }
+
+            const messages = body.messages;
+
+            for (const message of messages) {
+                const from = message?.from?.trim();
+                const bodyText = message?.text?.body?.trim() || "Sin mensaje";
+                const profileName = message?.from_name?.trim() || "Nombre Desconocido";
+                const fromMe = message?.from_me || false;
+
+                if (from === BOT_NUMBER && fromMe) {
+                    const chatId = message?.chat_id?.split("@")[0]?.trim();
+                    if (!chatId) continue;
+
+                    const queryResult = await wixData.query("WHP").eq("userId", chatId).find();
+                    if (queryResult.items.length > 0) {
+                        const existingConversation = queryResult.items[0];
+                        if (bodyText === "...transfiriendo con asesor") {
+                            existingConversation.stopBot = true;
+                        } else if (bodyText === "...te dejo con el bot 🤖") {
+                            existingConversation.stopBot = false;
+                        }
+                        await wixData.update("WHP", existingConversation);
+                    }
+                    continue;
+                }
+
+                if (from === BOT_NUMBER || fromMe) continue;
+                if (!from || !bodyText) continue;
+
+                let existingConversation;
+                try {
+                    const queryResult = await wixData.query("WHP").eq("userId", from).find();
+                    if (queryResult.items.length > 0) {
+                        existingConversation = queryResult.items[0];
+                    }
+                } catch (error) {
+                    console.error("Error consultando la conversación existente:", error);
+                }
+
+                let conversation;
+                if (existingConversation) {
+                    conversation = existingConversation;
+                } else {
+                    conversation = {
+                        userId: from,
+                        nombre: profileName,
+                        mensajes: [],
+                        nivel: 0,
+                        stopBot: false
+                    };
+                }
+
+                if (bodyText === "Ya terminé mis la pruebas") {
+                    conversation.stopBot = true;
+                    const saved = existingConversation ?
+                        await wixData.update("WHP", conversation) :
+                        await wixData.insert("WHP", conversation);
+
+                    setTimeout(async () => {
+                        try {
+                            const conv = await wixData.get("WHP", saved._id);
+                            conv.stopBot = false;
+                            await wixData.update("WHP", conv);
+                            console.log(`✅ Bot reactivado para ${conv.userId}`);
+                        } catch (err) {
+                            console.error("❌ Error reactivando bot:", err);
+                        }
+                    }, 50000);
+                    continue;
+                }
+
+                if (conversation.stopBot) continue;
+
+                let response = "";
+
+                if (conversation.nivel === 0) {
+                    response = `¡Hola!\nEscribe el *número* de opción:\n\n1️⃣ Exámenes Ocupacionales\n2️⃣ Pagar y Descargar\n3️⃣ Otros`;
+                    conversation.nivel = 1;
+                } else if (conversation.nivel === 1) {
+                    if (bodyText === "1") {
+                        response = `*Tenemos dos opciones:*\n\n1️⃣ Virtual ($ 46.000)\n2️⃣ Presencial ($ 69.000)\n3️⃣ Menú anterior`;
+                        conversation.nivel = 2;
+                    } else if (bodyText === "2") {
+                        response = `Paga $46.000 en las siguientes cuentas:\n\n*Bancolombia*\nCta Ahorros: 442 9119 2456\nCédula: 79 981 585\n\n*Daviplata:* 301 440 0818\n\n*Nequi:* 300 802 1701\n\nCuándo lo hagas *sube el soporte* en este link:\n\n https://www.bsl.com.co/soporte-pago`;
+                        conversation.nivel = 1;
+                        conversation.stopBot = true;
+                    } else if (bodyText === "3") {
+                        response = `¿Cual es tu pregunta?`;
+                        conversation.nivel = 1;
+                        conversation.stopBot = true;
+                        try {
+                            if (existingConversation) {
+                                await wixData.update("WHP", conversation);
+                            } else {
+                                delete conversation._id;
+                                await wixData.insert("WHP", conversation);
+                            }
+                        } catch (error) {
+                            console.error("Error guardando la conversación con stopBot actualizado:", error);
+                        }
+                    } else {
+                        response = `Por favor selecciona una opción:\n\n1️⃣ Exámenes Ocupacionales\n2️⃣ Pagar y Descargar\n3️⃣ Otros`;
+                    }
+                } else if (conversation.nivel === 2) {
+                    if (bodyText === "1") {
+                        response = `*¿Cómo funciona Virtual?*\n\n- Escoge la hora\n- Realiza las pruebas\n- El médico te contactará\n- Paga (Bcolombia, Nequi, Daviplata)\n\n*¡Listo!* Descarga tu certificado al instante.\n\n*Escoge la opción:*\n1️⃣ Agendar\n2️⃣ ¿Qué Incluye?\n3️⃣ Menú Anterior`;
+                        conversation.nivel = 3;
+                    } else if (bodyText === "2") {
+                        response = `*Presencial $ 69.000*\n\n*Bienestar y Salud Laboral*\n*Dirección:*\nCalle 134 No. 7-83\n\n*Horarios:*\nLunes a Viernes: 7:30 AM - 4:30 PM\nSábados: 8:00 AM - 11:30\n\n_No necesitas agendar_. Es por orden de llegada.\n\n*Escoge la opción:*\n1️⃣ ¿Qué Incluye?\n2️⃣ Virtual\n3️⃣ Menú Anterior`;
+                        conversation.nivel = 4;
+                    } else if (bodyText === "3") {
+                        response = `¡Hola!\nEscribe el *número* de opción:\n1️⃣ Exámenes Ocupacionales\n2️⃣ Pagar y Descargar\n3️⃣ Otros`;
+                        conversation.nivel = 1;
+                    } else {
+                        response = `Por favor selecciona una opción:\n1️⃣ Virtual ($ 46.000)\n2️⃣ Presencial ($ 69.000)\n3️⃣ Menú anterior`;
+                    }
+                } else if (conversation.nivel === 3) {
+                    if (bodyText === "1") {
+                        response = `Para comenzar haz clic:\n\n*https://www.bsl.com.co/nuevaorden-1*`;
+                        conversation.nivel = 0;
+                    } else if (bodyText === "2") {
+                        response = `Tu certificado incluye:\n\n 🦴Médico Osteomuscular\n👂 Audiometría\n👁️ Optometría\n\nPuedes agregar adicional:\n🫀 Cardiovascular ($ 5.000)\n🩸 Vascular ($ 5.000)\n🫁 Espirometría ($ 5.000)\n🧠 Psicológico ($ 15.000)\n🏻 Dermatológico ($ 5.000)\n💉 Perfil lipídico y otros laboratorios\n\n*Escoge la opción:*\n1️⃣ Agendar\n3️⃣ Menú Anterior`;
+                        conversation.nivel = 3;
+                    } else if (bodyText === "3") {
+                        response = `*Tenemos dos opciones:*\n1️⃣ Virtual ($ 46.000)\n2️⃣ Presencial ($ 69.000)\n3️⃣ Menú anterior`;
+                        conversation.nivel = 2;
+                    } else {
+                        response = `Por favor selecciona una opción:\n1️⃣ Agendar\n2️⃣ ¿Qué Incluye?\n3️⃣ Menú Anterior`;
+                    }
+                } else if (conversation.nivel === 4) {
+                    if (bodyText === "1") {
+                        response = `Tu certificado incluye:\n\n 🦴Médico Osteomuscular\n👂 Audiometría\n👁️ Optometría\n\nPuedes agregar adicional:\n🫀 Cardiovascular ($ 5.000)\n🩸 Vascular ($ 5.000)\n🫁 Espirometría ($ 5.000)\n🧠 Psicológico ($ 15.000)\n🏻 Dermatológico ($ 5.000)\n💉 Perfil lipídico y otros laboratorios\n\n*Escoge la opción:*\n1️⃣ ¿Qué Incluye?\n2️⃣ Virtual\n3️⃣ Menú Anterior`;
+                        conversation.nivel = 4;
+                    } else if (bodyText === "2") {
+                        response = `*¿Cómo funciona Virtual?*\n\n1️⃣ Escoge la hora\n2️⃣ Realiza las pruebas\n3️⃣ El médico te contactará\n4️⃣ Paga (Bancolombia, Nequi, Daviplata)\n\n*¡Listo!* Descarga tu certificado al instante.\n\n*Escoge la opción:*\n1. Agendar\n2. ¿Qué Incluye?\n3. Menú Anterior`;
+                        conversation.nivel = 3;
+                    } else if (bodyText === "3") {
+                        response = `*Tenemos dos opciones:*\n1️⃣ Virtual ($ 46.000)\n2️⃣ Presencial ($ 69.000)\n3️⃣ Menú anterior`;
+                        conversation.nivel = 2;
+                    } else {
+                        response = `Por favor selecciona una opción:\n1️⃣ ¿Qué Incluye?\n2️⃣ Virtual\n3️⃣ Menú Anterior`;
+                    }
+                }
+                // Si no se generó ninguna respuesta por la lógica de niveles, asignar bienvenida por defecto
+                if (!response || response.trim() === "") {
+                    console.warn("❌ Se intentó enviar un mensaje vacío. Mensaje del usuario:", bodyText);
+
+                    // Asignar un mensaje de bienvenida por defecto
+                    response = `¡Hola! 👋\nEscribe el *número* de opción:\n\n1️⃣ Exámenes Ocupacionales\n2️⃣ Pagar y Descargar\n3️⃣ Otros`;
+                    conversation.nivel = 1;
+                }
+
+                conversation.mensajes.push({
+                    from: "usuario",
+                    mensaje: bodyText,
+                    timestamp: new Date().toISOString()
+                });
+
+                conversation.mensajes.push({
+                    from: "sistema",
+                    mensaje: response,
+                    timestamp: new Date().toISOString()
+                });
+
+                try {
+                    if (existingConversation) {
+                        await wixData.update("WHP", conversation);
+                    } else {
+                        delete conversation._id;
+                        await wixData.insert("WHP", conversation);
+                    }
+                } catch (error) {
+                    console.error("Error guardando la conversación:", error);
+                }
+
+                await sendTextMessage(from, response);
+            }
+
+            return {
+                status: 200,
+                body: { message: "Mensajes procesados correctamente." }
+            };
+        })
+        .catch(error => {
+            console.error("Error procesando webhook:", error);
+            return {
+                status: 500,
+                body: { message: "Error procesando el webhook." }
+            };
+        });
+}

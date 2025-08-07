@@ -1,11 +1,11 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
-async function guardarConversacionEnWix({ userId, nombre, mensajes }) {
+async function guardarConversacionEnWix({ userId, nombre, mensajes, fase = "inicial" }) {
     try {
         const resp = await fetch('https://www.bsl.com.co/_functions/guardarConversacion', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, nombre, mensajes })
+            body: JSON.stringify({ userId, nombre, mensajes, fase })
         });
         const text = await resp.text();
         try {
@@ -27,11 +27,12 @@ async function obtenerConversacionDeWix(userId) {
         const json = await resp.json();
         return {
             mensajes: json.mensajes || [],
-            observaciones: json.observaciones || ""
+            observaciones: json.observaciones || "",
+            fase: json.fase || "inicial"
         };
     } catch (err) {
         console.error("Error obteniendo historial de Wix:", err);
-        return { mensajes: [], observaciones: "" };
+        return { mensajes: [], observaciones: "", fase: "inicial" };
     }
 }
 
