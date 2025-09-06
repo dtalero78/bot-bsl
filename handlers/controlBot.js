@@ -1,6 +1,10 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const { sendMessage } = require('../utils/sendMessage');
-const BOT_NUMBER = "573008021701";
+const { actualizarObservaciones } = require('../utils/dbAPI');
+const { logInfo, logError } = require('../utils/shared');
+const { config } = require('../config/environment');
+
+const BOT_NUMBER = config.bot.number;
 
 async function manejarControlBot(message) {
     // Solo filtra si viene del bot/admin (desde el mismo número)
@@ -11,43 +15,27 @@ async function manejarControlBot(message) {
         const userId = chatId.split("@")[0];
         const to = `${userId}@s.whatsapp.net`;
 
-        const frasesDeDetencion = [
-            "...transfiriendo con asesor",
-            "...transfiriendo con asesor.",
-        ];
-
-        const palabrasClaveStop = ["foundever", "ttec", "evertec", "rippling", "egreso"];
+        const frasesDeDetencion = config.bot.frasesDetencion;
+        const palabrasClaveStop = config.bot.palabrasClaveStop;
 
         // 🚫 Detención por frase exacta
         if (bodyText && frasesDeDetencion.includes(bodyText)) {
-            console.log(`🛑 Bot desactivado por frase exacta para ${chatId}`);
-            await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, observaciones: "stop" })
-            });
+            logInfo('controlBot', `Bot desactivado por frase exacta`, { chatId, frase: bodyText });
+            await actualizarObservaciones(userId, "stop");
             return { detuvoBot: true };
         }
 
         // 🚫 Detención por palabras clave
         else if (bodyText && palabrasClaveStop.some(p => bodyText.includes(p))) {
-            console.log(`🛑 Bot desactivado por palabra clave para ${chatId}`);
-            await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, observaciones: "stop" })
-            });
+            logInfo('controlBot', `Bot desactivado por palabra clave`, { chatId, palabra: palabrasClaveStop.find(p => bodyText.includes(p)) });
+            await actualizarObservaciones(userId, "stop");
             return { detuvoBot: true };
         }
 
         // ✅ Reactivar bot
-        if (bodyText === "...te dejo con el bot 🤖") {
-            console.log(`✅ Bot reactivado para ${chatId}`);
-            await fetch(`https://www.bsl.com.co/_functions/actualizarObservaciones`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, observaciones: " " })
-            });
+        if (bodyText === config.bot.fraseReactivacion) {
+            logInfo('controlBot', `Bot reactivado`, { chatId });
+            await actualizarObservaciones(userId, " ");
         }
 
         return { success: true, mensaje: "Mensaje de control procesado." };

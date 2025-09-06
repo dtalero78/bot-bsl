@@ -1,8 +1,9 @@
-const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
-const { promptInstitucional } = require('../utils/prompt');
-const { sendMessage } = require('../utils/sendMessage');
-const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('../utils/wixAPI');
+const { guardarConversacionEnDB, obtenerConversacionDeDB, actualizarObservaciones } = require('../utils/dbAPI');
 const { determinarNuevaFase } = require('../utils/faseDetector');
+const { limpiarDuplicados, extraerUserId, obtenerTextoMensaje, logInfo, logError, generarTimestamp } = require('../utils/shared');
+const ValidationService = require('../utils/validation');
+const MessageService = require('../services/messageService');
+const { config } = require('../config/environment');
 const { 
     manejarFaseInicial, 
     manejarPostAgendamiento, 
@@ -10,36 +11,23 @@ const {
     manejarPago 
 } = require('./faseHandlers');
 
-// Función de utilidad para evitar mensajes duplicados
-function limpiarDuplicados(historial) {
-    const vistos = new Set();
-    return historial.filter(m => {
-        const clave = `${m.from}|${m.mensaje}`;
-        if (vistos.has(clave)) return false;
-        vistos.add(clave);
-        return true;
-    });
-}
-
-// Función para marcar STOP automáticamente
-async function marcarStopEnWix(userId) {
+/**
+ * Marca automáticamente como STOP cuando el admin envía mensaje específico
+ */
+async function marcarStopAutomatico(userId) {
     try {
-        const resp = await fetch("https://www.bsl.com.co/_functions/actualizarObservaciones", {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, observaciones: "stop" })
-        });
-        
-        const result = await resp.json();
-        console.log(`🛑 STOP marcado automáticamente para usuario: ${userId}`, result);
+        await actualizarObservaciones(userId, "stop");
+        logInfo('procesarTexto', 'STOP marcado automáticamente por mensaje de admin', { userId });
         return { success: true };
-    } catch (err) {
-        console.error("Error marcando STOP en Wix:", err);
-        return { success: false, error: err.message };
+    } catch (error) {
+        logError('procesarTexto', 'Error marcando STOP automático', { userId, error });
+        return { success: false, error: error.message };
     }
 }
 
-// Función para detectar mensaje de verificación del admin
+/**
+ * Detecta si el último mensaje del admin fue de verificación de datos
+ */
 function ultimoMensajeFueVerificarDatos(historial) {
     const mensajesAdmin = historial.filter(m => m.from === "admin");
     if (mensajesAdmin.length === 0) return false;
@@ -51,130 +39,159 @@ function ultimoMensajeFueVerificarDatos(historial) {
         "revisa que todo este en orden"
     ];
     
-    return mensajesStop.some(msg => ultimoMensajeAdmin.mensaje.toLowerCase().includes(msg.toLowerCase()));
-}
-
-// Función para enviar y guardar mensaje en historial
-async function enviarMensajeYGuardar({ to, userId, nombre, texto, remitente = "sistema", fase = "inicial" }) {
-    try {
-        if (to) {
-            const resultado = await sendMessage(to, texto);
-            if (!resultado.success && resultado.error) {
-                console.error(`❌ Error enviando mensaje a ${to}:`, resultado.error);
-                return { success: false, error: resultado.error };
-            }
-        }
-        
-        const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
-        const historialLimpio = limpiarDuplicados(historial);
-        const nuevoHistorial = limpiarDuplicados([
-            ...historialLimpio,
-            { from: remitente, mensaje: texto, timestamp: new Date().toISOString() }
-        ]);
-        
-        const guardado = await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial, fase });
-        return { success: true, guardado };
-    } catch (error) {
-        console.error(`❌ Error en enviarMensajeYGuardar para ${userId}:`, error.message);
-        return { success: false, error: error.message };
-    }
+    return mensajesStop.some(msg => 
+        ultimoMensajeAdmin.mensaje.toLowerCase().includes(msg.toLowerCase())
+    );
 }
 
 /**
- * FUNCIÓN PRINCIPAL - PROCESAR TEXTO CON SISTEMA DE FASES
+ * FUNCIÓN PRINCIPAL - Procesar mensaje de texto con sistema de fases
  */
 async function procesarTexto(message, res) {
-    const from = message.from;
-    const nombre = message.from_name || "Nombre desconocido";
-    const chatId = message.chat_id;
-    const to = chatId || `${from}@s.whatsapp.net`;
-    const userMessage = message.text.body.trim();
+    try {
+        const from = message.from;
+        const nombre = message.from_name || "Usuario";
+        const chatId = message.chat_id;
+        const to = from;
+        const userMessage = obtenerTextoMensaje(message);
+        const userId = extraerUserId(from);
 
-    console.log(`📝 Procesando texto de ${from}: "${userMessage}"`);
-
-    // 1. Guardar el mensaje del usuario
-    {
-        const { mensajes: historial = [], fase = "inicial" } = await obtenerConversacionDeWix(from);
-        const historialLimpio = limpiarDuplicados(historial);
-        const nuevoHistorial = limpiarDuplicados([
-            ...historialLimpio,
-            { from: "usuario", mensaje: userMessage, timestamp: new Date().toISOString() }
-        ]);
-        await guardarConversacionEnWix({ userId: from, nombre, mensajes: nuevoHistorial, fase });
-    }
-
-    // 2. Obtener estado actualizado
-    const { mensajes: mensajesHistorial = [], observaciones = "", fase = "inicial" } = await obtenerConversacionDeWix(from);
-    const historialLimpio = limpiarDuplicados(mensajesHistorial);
-
-    console.log(`📊 Estado actual - Fase: ${fase}, Mensajes: ${historialLimpio.length}`);
-
-    // 3. Verificar si el usuario está bloqueado por observaciones
-    if (String(observaciones).toLowerCase().includes("stop")) {
-        console.log(`🛑 Usuario ${from} bloqueado por observaciones STOP`);
-        return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones." });
-    }
-
-    // 4. Detectar y actualizar fase automáticamente
-    const nuevaFase = determinarNuevaFase(fase, userMessage, historialLimpio);
-    
-    if (nuevaFase !== fase) {
-        console.log(`🔄 Cambio de fase detectado: ${fase} → ${nuevaFase}`);
-        // Actualizar la fase en la base de datos
-        await guardarConversacionEnWix({ 
-            userId: from, 
-            nombre, 
-            mensajes: historialLimpio, 
-            fase: nuevaFase 
-        });
-    }
-
-    // 5. Marcar STOP automáticamente cuando admin dice mensaje específico
-    if (ultimoMensajeFueVerificarDatos(historialLimpio)) {
-        console.log("🛑 Detectado mensaje del ADMIN - Marcando STOP");
-        await marcarStopEnWix(from);
-        await enviarMensajeYGuardar({
-            to,
-            userId: from,
-            nombre,
-            texto: "Gracias por la información. Un asesor revisará tu caso y te contactará pronto.",
-            remitente: "sistema",
-            fase: nuevaFase
-        });
-        return res.json({ success: true, mensaje: "Usuario marcado como STOP" });
-    }
-
-    // 6. ROUTER PRINCIPAL POR FASE
-    console.log(`🚀 Routing a fase: ${nuevaFase}`);
-    
-    switch (nuevaFase) {
-        case "inicial":
-            return await manejarFaseInicial(message, res, historialLimpio);
-        
-        case "post_agendamiento":
-            return await manejarPostAgendamiento(message, res, historialLimpio);
-        
-        case "revision_certificado":
-            return await manejarRevisionCertificado(message, res, historialLimpio);
-        
-        case "pago":
-            return await manejarPago(message, res, historialLimpio);
-        
-        case "completado":
-            // Proceso completado, podría reiniciar o mantener estado
-            await enviarMensajeYGuardar({
-                to,
-                userId: from,
-                nombre,
-                texto: "Tu proceso ha sido completado exitosamente. Si necesitas realizar otro examen, te ayudo con gusto.",
-                remitente: "sistema",
-                fase: "inicial" // Reiniciar para nueva consulta
+        // Validar mensaje de entrada
+        const validacionMensaje = ValidationService.validarMensajeTexto(userMessage, 500);
+        if (!validacionMensaje.isValid) {
+            logError('procesarTexto', `Mensaje inválido: ${validacionMensaje.error}`, { userId });
+            
+            await MessageService.enviarMensajeSimple(to,
+                `❌ ${validacionMensaje.error}. Por favor envía un mensaje válido.`
+            );
+            
+            return res.status(400).json({ 
+                success: false, 
+                error: validacionMensaje.error,
+                context: 'message_validation'
             });
-            return res.json({ success: true, mensaje: "Proceso completado, reiniciando", fase: "inicial" });
+        }
+
+        const mensajeLimpio = validacionMensaje.sanitized;
+
+        logInfo('procesarTexto', 'Procesando mensaje de texto', {
+            userId,
+            nombre,
+            messagePreview: mensajeLimpio.substring(0, 50) + (mensajeLimpio.length > 50 ? '...' : ''),
+            originalLength: userMessage.length,
+            sanitizedLength: mensajeLimpio.length
+        });
+
+        // 1. Obtener estado actual de la conversación
+        const { mensajes: historial = [], observaciones = "", fase = "inicial" } = 
+            await obtenerConversacionDeDB(userId);
+        const historialLimpio = limpiarDuplicados(historial);
+
+        // 2. Verificar si el usuario está bloqueado
+        if (MessageService.estaUsuarioBloqueado(observaciones)) {
+            logInfo('procesarTexto', 'Usuario bloqueado por observaciones STOP', { userId });
+            return res.json({ success: true, mensaje: "Usuario bloqueado por observaciones." });
+        }
+
+        // 3. Agregar mensaje del usuario al historial (usando mensaje sanitizado)
+        const historialActualizado = MessageService.agregarMensajeUsuario(
+            userId, 
+            mensajeLimpio, 
+            nombre, 
+            historialLimpio, 
+            fase
+        );
+
+        logInfo('procesarTexto', 'Estado de conversación', {
+            userId,
+            fase,
+            totalMensajes: historialActualizado.length,
+            observaciones: observaciones ? 'present' : 'empty'
+        });
+
+        // 4. Detectar cambio de fase automáticamente
+        const nuevaFase = determinarNuevaFase(fase, mensajeLimpio, historialActualizado);
         
-        default:
-            console.log(`❌ Fase desconocida: ${nuevaFase}, defaulting a inicial`);
-            return await manejarFaseInicial(message, res, historialLimpio);
+        if (nuevaFase !== fase) {
+            logInfo('procesarTexto', 'Cambio de fase detectado', { 
+                userId, 
+                faseAnterior: fase, 
+                nuevaFase 
+            });
+            
+            // Actualizar fase en la base de datos
+            await guardarConversacionEnDB({ 
+                userId, 
+                nombre, 
+                mensajes: historialActualizado, 
+                fase: nuevaFase 
+            });
+        }
+
+        // 5. Verificar si necesita marcar STOP automático por mensaje de admin
+        if (ultimoMensajeFueVerificarDatos(historialActualizado)) {
+            logInfo('procesarTexto', 'Detectado mensaje de verificación del admin - Marcando STOP', { userId });
+            
+            await marcarStopAutomatico(userId);
+            
+            await MessageService.enviarMensajeYGuardar({
+                to,
+                userId,
+                nombre,
+                texto: "Gracias por la información. Un asesor revisará tu caso y te contactará pronto.",
+                historial: historialActualizado,
+                remitente: "sistema",
+                fase: nuevaFase
+            });
+            
+            return res.json({ success: true, mensaje: "Usuario marcado como STOP automáticamente" });
+        }
+
+        // 6. Enrutar a la fase correspondiente
+        logInfo('procesarTexto', 'Enrutando a manejador de fase', { userId, fase: nuevaFase });
+        
+        switch (nuevaFase) {
+            case "inicial":
+                return await manejarFaseInicial(message, res, historialActualizado);
+            
+            case "post_agendamiento":
+                return await manejarPostAgendamiento(message, res, historialActualizado);
+            
+            case "revision_certificado":
+                return await manejarRevisionCertificado(message, res, historialActualizado);
+            
+            case "pago":
+                return await manejarPago(message, res, historialActualizado);
+            
+            default:
+                logError('procesarTexto', `Fase no reconocida: ${nuevaFase}`, { userId });
+                
+                // Fallback a fase inicial
+                return await manejarFaseInicial(message, res, historialActualizado);
+        }
+
+    } catch (error) {
+        const userId = extraerUserId(message.from);
+        logError('procesarTexto', 'Error general procesando texto', { 
+            userId, 
+            error,
+            messageType: message.type 
+        });
+
+        // Intentar enviar mensaje de error al usuario
+        try {
+            await MessageService.enviarMensajeSimple(message.from, 
+                "❌ Hubo un problema procesando tu mensaje. Por favor intenta de nuevo."
+            );
+        } catch (sendError) {
+            logError('procesarTexto', 'Error enviando mensaje de error', { userId, error: sendError });
+        }
+
+        return res.status(500).json({ 
+            success: false, 
+            error: error.message,
+            context: 'procesarTexto'
+        });
     }
 }
 

@@ -1,7 +1,7 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const { promptInstitucional } = require('../utils/prompt');
 const { sendMessage } = require('../utils/sendMessage');
-const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('../utils/wixAPI');
+const { guardarConversacionEnDB, obtenerConversacionDeDB } = require('../utils/dbAPI');
 const { consultarInformacionPaciente } = require('../utils/consultarPaciente');
 const { marcarPagado } = require('../utils/marcarPagado');
 const { sendPdf, generarPdfDesdeApi2Pdf } = require('../utils/pdf');
@@ -11,44 +11,12 @@ const {
     getOpcionesRevisionCertificado, 
     esOpcionNumerica 
 } = require('../utils/faseDetector');
+const { limpiarDuplicados, extraerUserId, esCedula: esCedulaShared, logInfo, logError } = require('../utils/shared');
+const MessageService = require('../services/messageService');
+const { getOpenAIService } = require('../services/openaiService');
+const { config } = require('../config/environment');
 
-// Función de utilidad para evitar mensajes duplicados
-function limpiarDuplicados(historial) {
-    const vistos = new Set();
-    return historial.filter(m => {
-        const clave = `${m.from}|${m.mensaje}`;
-        if (vistos.has(clave)) return false;
-        vistos.add(clave);
-        return true;
-    });
-}
 
-// Función simple: solo enviar mensaje + guardar historial (SIN fetch adicional)
-async function simpleEnviarYGuardar(to, userId, nombre, texto, historial, fase = "inicial") {
-    try {
-        // 1. Enviar mensaje
-        if (to) {
-            const resultado = await sendMessage(to, texto);
-            if (!resultado.success) {
-                console.error(`❌ Error enviando mensaje: ${resultado.error}`);
-                return false;
-            }
-        }
-        
-        // 2. Agregar mensaje al historial sin hacer fetch adicional
-        const nuevoHistorial = limpiarDuplicados([
-            ...historial,
-            { from: "sistema", mensaje: texto, timestamp: new Date().toISOString() }
-        ]);
-        
-        // 3. Guardar
-        await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial, fase });
-        return true;
-    } catch (error) {
-        console.error(`❌ Error en simpleEnviarYGuardar:`, error);
-        return false;
-    }
-}
 
 /**
  * FASE 1: INICIAL - Usar ChatGPT para respuestas naturales

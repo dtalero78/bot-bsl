@@ -85,27 +85,6 @@ Los mensajes que empiezan con "📷", "📅", "📋", "🆔" son contexto intern
 Responde de forma natural y contextual según el historial de la conversación.
 `;
 
-// Clasificador simplificado - ya no es necesario con la nueva lógica
-const promptClasificador = `
-Eres un clasificador de intenciones para un bot médico. Analiza SOLO el último mensaje del usuario y responde con UNA palabra:
-
-OPCIONES:
-- examen: Quiere hacer un examen médico
-- virtual: Elige opción virtual  
-- presencial: Elige opción presencial
-- precios: Pregunta precios/costos
-- cita: Quiere confirmar horario de cita
-- pago: Quiere pagar o información de pago
-- certificado: Quiere descargar certificado
-- asesor: Quiere hablar con persona/reporta problema
-- general: Saludo o consulta general
-
-Último mensaje: "{mensaje}"
-
-Responde solo con UNA palabra de las opciones.
-`;
-
 module.exports = {
-  promptInstitucional,
-  promptClasificador
+  promptInstitucional
 };

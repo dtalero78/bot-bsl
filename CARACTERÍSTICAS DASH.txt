@@ -1,0 +1,101 @@
+✅ Dashboard Admin Completo Implementado
+
+  He creado un dashboard web profesional para administrar el bot BSL con todas las funcionalidades necesarias:
+
+  🎯 Características del Dashboard
+
+  🔐 Autenticación
+
+  - Token Bearer para seguridad
+  - Configuración: ADMIN_TOKEN=admin-secret-token en .env
+  - Sesión persistente con localStorage
+
+  📊 Dashboard Principal
+
+  - Estadísticas en tiempo real: Total conversaciones, activas 24h, bloqueadas
+  - Distribución por fases con gráficos visuales
+  - Estado del bot y última actualización
+
+  💬 Gestión de Conversaciones
+
+  - Lista paginada con filtros por fase, estado y búsqueda
+  - Vista detallada de cada conversación con historial completo
+  - Envío de mensajes manuales desde el dashboard
+  - Bloqueo/desbloqueo de usuarios con un click
+  - Exportación de conversaciones en JSON
+
+  ⚡ Monitoreo de Performance
+
+  - Métricas en tiempo real: requests, memoria, tiempos de respuesta
+  - Cache performance con hit rates
+  - Top endpoints más utilizados
+  - Estadísticas detalladas por endpoint
+
+  🩺 Salud del Sistema
+
+  - Estado de servicios: PostgreSQL, Redis, Colas, Sistema
+  - Alertas visuales por colores (verde/amarillo/rojo)
+  - Métricas detalladas de cada componente
+  - Advertencias del sistema
+
+  🔧 Herramientas de Admin
+
+  - Limpiar caché Redis manualmente
+  - Reset de métricas (desarrollo)
+  - Exportar datos para backup/análisis
+
+  🚀 Acceso al Dashboard
+
+  # 1. Iniciar el bot
+  npm start
+
+  # 2. Acceder al dashboard
+  http://localhost:3000
+
+  # 3. Login con token
+  Token: admin-secret-token
+
+  📱 Interfaz Responsive
+
+  - Bootstrap 5 con diseño moderno
+  - Icons Bootstrap para mejor UX
+  - Sidebar colapsable para móviles
+  - Alertas toast para feedback
+  - Modales para acciones detalladas
+  - Paginación para listas grandes
+
+  🛠️ Funcionalidades por Sección
+
+  Dashboard
+
+  - Estadísticas generales del bot
+  - Gráficos de distribución por fases
+  - Estado en tiempo real
+
+  Conversaciones
+
+  - Buscar: 573001234567 o por nombre
+  - Filtrar: por fase, estado bloqueado
+  - Acciones: ver, bloquear, enviar mensaje
+
+  Métricas
+
+  - Performance de APIs
+  - Estado del caché
+  - Top endpoints más usados
+
+  Salud
+
+  - Estado de PostgreSQL
+  - Estado de Redis
+  - Estado de colas de procesamiento
+  - Recursos del sistema
+
+  Herramientas
+
+  - Limpieza de caché
+  - Reset de métricas
+  - Exportación de datos
+
+  El dashboard está completamente funcional y listo para administrar el bot BSL de manera profesional. ¿Te gustaría que ajuste
+  alguna funcionalidad específica o agreguemos alguna característica adicional?

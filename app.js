@@ -5,23 +5,58 @@ const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fet
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
+// Servir archivos estáticos para el dashboard
+app.use(express.static('public'));
+
+// Middleware de logging, métricas y rate limiting
+const requestLogger = require('./middleware/requestLogger');
+const { requestMetricsMiddleware } = require('./middleware/performanceMetrics');
+const { createRateLimiter } = require('./middleware/rateLimiter');
+
+app.use(requestLogger);
+app.use(requestMetricsMiddleware);
+
+// Rate limiting global con configuraciones específicas por endpoint
+const globalRateLimiter = createRateLimiter('normal', {
+    endpointConfigs: {
+        'POST /soporte': {
+            windowMs: 1 * 60 * 1000, // 1 minuto para webhooks
+            maxRequests: 60,
+            skipFailedRequests: true
+        },
+        'POST /api/guardarMensaje': {
+            windowMs: 5 * 60 * 1000, // 5 minutos
+            maxRequests: 20
+        },
+        '/health': {
+            windowMs: 1 * 60 * 1000, // 1 minuto para health checks
+            maxRequests: 30
+        },
+        '/metrics': {
+            windowMs: 1 * 60 * 1000,
+            maxRequests: 20
+        }
+    },
+    userTypeConfigs: {
+        'authenticated': {
+            maxRequests: 200 // Más requests para usuarios autenticados
+        }
+    }
+});
+
+app.use(globalRateLimiter.middleware());
+
 const { manejarControlBot } = require('./handlers/controlBot');
 const { procesarImagen } = require('./handlers/procesarImagen');
 const { procesarTexto } = require('./handlers/procesarTexto');
-const { guardarConversacionEnWix, obtenerConversacionDeWix } = require('./utils/wixAPI');
+const { guardarConversacionEnDB, obtenerConversacionDeDB } = require('./utils/dbAPI');
+const { obtenerTextoMensaje, extraerUserId, limpiarDuplicados, logInfo, logError } = require('./utils/shared');
+const logger = require('./utils/logger');
+const { config } = require('./config/environment');
+const HealthCheckService = require('./middleware/healthCheck');
 
-// 🔁 Evitar mensajes repetidos
-function limpiarDuplicados(historial) {
-    const vistos = new Set();
-    return historial.filter(m => {
-        const clave = `${m.from}|${m.mensaje}`;
-        if (vistos.has(clave)) return false;
-        vistos.add(clave);
-        return true;
-    });
-}
 
-const BOT_NUMBER = "573008021701"; // tu número de bot/admin
+const BOT_NUMBER = config.bot.number;
 
 function identificarActor(message) {
     if (message.from !== BOT_NUMBER) return "usuario";
@@ -35,15 +70,6 @@ function identificarActor(message) {
     return "usuario"; // fallback
 }
 
-function obtenerTextoMensaje(message) {
-    if (message.type === "text") {
-        return message.text?.body?.trim() || "";
-    }
-    if (message.type === "link_preview") {
-        return message.link_preview?.body?.trim() || "";
-    }
-    return "";
-}
 
 app.post('/soporte', async (req, res) => {
     try {
@@ -56,7 +82,7 @@ app.post('/soporte', async (req, res) => {
         const chatId = message.chat_id;
         const texto = obtenerTextoMensaje(message);
         const nombre = message.from_name || "Administrador";
-        const userId = (chatId || from)?.replace("@s.whatsapp.net", "");
+        const userId = extraerUserId(chatId || from);
         const resultControl = await manejarControlBot(message);
         if (resultControl?.detuvoBot) {
             return res.json(resultControl); // ⬅️ DETIENE AQUÍ si aplica stop
@@ -66,11 +92,11 @@ app.post('/soporte', async (req, res) => {
 
         // SISTEMA (bot automático)
         if (actor === "sistema") {
-            const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
+            const { mensajes: historial = [] } = await obtenerConversacionDeDB(userId);
             const historialLimpio = limpiarDuplicados(historial);
             const ultimoSistema = [...historialLimpio].reverse().find(m => m.from === "sistema");
             if (ultimoSistema && ultimoSistema.mensaje === texto) {
-                console.log("🟡 Ignorando mensaje duplicado del bot:", texto);
+                logInfo('app.js', 'Ignorando mensaje duplicado del bot', { texto, userId });
                 return res.json({ success: true, mensaje: "Mensaje duplicado ignorado." });
             }
             const nuevoHistorial = limpiarDuplicados([
@@ -81,7 +107,7 @@ app.post('/soporte', async (req, res) => {
                     timestamp: new Date().toISOString()
                 }
             ]);
-            await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
+            await guardarConversacionEnDB({ userId, nombre, mensajes: nuevoHistorial });
             return res.json({ success: true, mensaje: "Mensaje del sistema guardado." });
         }
 
@@ -89,11 +115,11 @@ app.post('/soporte', async (req, res) => {
         if (actor === "admin") {
             // Permitir texto y link_preview del admin
             if (message.type === "text" || message.type === "link_preview") {
-                const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
+                const { mensajes: historial = [] } = await obtenerConversacionDeDB(userId);
                 const historialLimpio = limpiarDuplicados(historial);
                 const ultimoAdmin = [...historialLimpio].reverse().find(m => m.from === "admin");
                 if (ultimoAdmin && ultimoAdmin.mensaje === texto) {
-                    console.log("🟡 Ignorando mensaje duplicado del admin:", texto);
+                    logInfo('app.js', 'Ignorando mensaje duplicado del admin', { texto, userId });
                     return res.json({ success: true, mensaje: "Mensaje duplicado ignorado." });
                 }
                 const nuevoHistorial = limpiarDuplicados([
@@ -105,8 +131,8 @@ app.post('/soporte', async (req, res) => {
                         tipo: "manual"
                     }
                 ]);
-                await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
-                console.log(`[ADMIN] Mensaje guardado: "${texto}" para ${userId}`);
+                await guardarConversacionEnDB({ userId, nombre, mensajes: nuevoHistorial });
+                logInfo('app.js', 'Mensaje de admin guardado', { texto, userId });
                 return res.json({ success: true, mensaje: "Mensaje de admin guardado." });
             }
             // Si no es texto ni link_preview, simplemente ignorar:
@@ -129,11 +155,24 @@ app.post('/soporte', async (req, res) => {
         return res.json({ success: true, mensaje: "Mensaje ignorado." });
 
     } catch (error) {
-        console.error("Error general en /soporte:", error);
+        logError('app.js', error, { endpoint: '/soporte' });
         return res.status(500).json({ success: false, error: error.message });
     }
 });
 
+
+// Health check endpoints
+app.get('/health', HealthCheckService.basicHealthCheck);
+app.get('/health/detailed', HealthCheckService.detailedHealthCheck);
+app.get('/metrics', HealthCheckService.metricsEndpoint);
+
+// Advanced metrics routes
+const metricsRouter = require('./routes/metrics');
+app.use('/api/metrics', metricsRouter);
+
+// Admin routes
+const adminRouter = require('./routes/admin');
+app.use('/api/admin', adminRouter);
 
 app.post('/api/guardarMensaje', async (req, res) => {
     try {
@@ -142,7 +181,7 @@ app.post('/api/guardarMensaje', async (req, res) => {
             return res.status(400).json({ success: false, error: "userId y mensaje son obligatorios" });
         }
         // Obtén el historial actual
-        const { mensajes: historial = [] } = await obtenerConversacionDeWix(userId);
+        const { mensajes: historial = [] } = await obtenerConversacionDeDB(userId);
         // Agrega el nuevo mensaje
         const nuevoHistorial = [
             ...historial,
@@ -152,7 +191,7 @@ app.post('/api/guardarMensaje', async (req, res) => {
                 timestamp: timestamp || new Date().toISOString()
             }
         ];
-        await guardarConversacionEnWix({ userId, nombre, mensajes: nuevoHistorial });
+        await guardarConversacionEnDB({ userId, nombre, mensajes: nuevoHistorial });
         return res.json({ success: true, mensaje: "Mensaje registrado correctamente." });
     } catch (e) {
         return res.status(500).json({ success: false, error: e.message });
@@ -160,7 +199,12 @@ app.post('/api/guardarMensaje', async (req, res) => {
 });
 
 
-const PORT = process.env.PORT || 3000;
+const PORT = config.server.port;
 app.listen(PORT, () => {
-    console.log("Servidor escuchando en puerto", PORT);
+    logger.info('app.js', `🚀 Servidor iniciado correctamente en puerto ${PORT}`, { 
+        environment: config.server.environment,
+        port: PORT,
+        nodeVersion: process.version,
+        pid: process.pid
+    });
 });
