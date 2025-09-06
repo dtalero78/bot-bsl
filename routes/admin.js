@@ -83,6 +83,58 @@ router.get('/database/inspect', async (req, res) => {
 });
 
 /**
+ * Verificar configuración de variables de entorno
+ */
+router.get('/env/check', async (req, res) => {
+    res.json({
+        success: true,
+        environment: {
+            NODE_ENV: process.env.NODE_ENV,
+            PORT: process.env.PORT,
+            DB_HOST: process.env.DB_HOST ? '***configured***' : 'missing',
+            DB_PORT: process.env.DB_PORT,
+            DB_USER: process.env.DB_USER ? '***configured***' : 'missing',
+            DB_PASSWORD: process.env.DB_PASSWORD ? '***configured***' : 'missing',
+            DB_NAME: process.env.DB_NAME ? '***configured***' : 'missing',
+            OPENAI_KEY: process.env.OPENAI_KEY ? '***configured***' : 'missing',
+            WHAPI_KEY: process.env.WHAPI_KEY ? '***configured***' : 'missing'
+        },
+        timestamp: new Date().toISOString()
+    });
+});
+
+/**
+ * Ultra simple database test - solo verificar conexión
+ */
+router.get('/db/ping', async (req, res) => {
+    try {
+        // Timeout muy corto para test rápido
+        const timeout = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout')), 1000)
+        );
+        
+        const pingQuery = pool.query('SELECT 1 as ping');
+        
+        const result = await Promise.race([pingQuery, timeout]);
+        
+        res.json({ 
+            success: true, 
+            message: 'Database connection working',
+            ping: result.rows[0].ping,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        res.json({ 
+            success: false, 
+            error: error.message,
+            message: 'Database connection failed',
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
  * Dashboard simple test - para verificar conectividad
  */
 router.get('/dashboard/test', async (req, res) => {
