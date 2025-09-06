@@ -28,6 +28,61 @@ function requireAuth(req, res, next) {
 router.use(requireAuth);
 
 /**
+ * Database inspection - para verificar qué hay en la DB
+ */
+router.get('/database/inspect', async (req, res) => {
+    try {
+        const inspection = {
+            timestamp: new Date().toISOString(),
+            tables: {},
+            info: 'Database inspection results'
+        };
+        
+        // Verificar qué tablas existen
+        const tablesResult = await pool.query(`
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public'
+            ORDER BY table_name;
+        `);
+        
+        inspection.availableTables = tablesResult.rows.map(row => row.table_name);
+        
+        // Si existe la tabla conversaciones, obtener algunos datos
+        if (tablesResult.rows.some(row => row.table_name === 'conversaciones')) {
+            const convCount = await pool.query('SELECT COUNT(*) as count FROM conversaciones');
+            const sampleConv = await pool.query('SELECT user_id, nombre, fase, created_at FROM conversaciones LIMIT 5');
+            
+            inspection.tables.conversaciones = {
+                count: convCount.rows[0].count,
+                samples: sampleConv.rows
+            };
+        }
+        
+        // Si existe la tabla pacientes
+        if (tablesResult.rows.some(row => row.table_name === 'pacientes')) {
+            const pacCount = await pool.query('SELECT COUNT(*) as count FROM pacientes');
+            const samplePac = await pool.query('SELECT cedula, nombre, telefono, pagado, created_at FROM pacientes LIMIT 5');
+            
+            inspection.tables.pacientes = {
+                count: pacCount.rows[0].count,
+                samples: samplePac.rows
+            };
+        }
+        
+        res.json({ success: true, inspection });
+        
+    } catch (error) {
+        logger.error('AdminRoute', 'Database inspection failed', { error: error.message });
+        res.json({ 
+            success: false, 
+            error: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
  * Dashboard simple test - para verificar conectividad
  */
 router.get('/dashboard/test', async (req, res) => {
