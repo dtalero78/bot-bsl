@@ -28,79 +28,68 @@ function requireAuth(req, res, next) {
 router.use(requireAuth);
 
 /**
+ * Dashboard simple test - para verificar conectividad
+ */
+router.get('/dashboard/test', async (req, res) => {
+    res.json({ 
+        success: true, 
+        message: 'Dashboard test endpoint working',
+        timestamp: new Date().toISOString()
+    });
+});
+
+/**
  * Dashboard - Estadísticas generales del bot
  */
 router.get('/dashboard', async (req, res) => {
     try {
-        // Configurar timeout de 8 segundos para evitar 504
-        const queryTimeout = 8000;
+        // Respuesta inmediata con datos básicos mientras la DB está lenta
+        logger.info('AdminRoute', 'Dashboard request received');
         
-        const statsPromises = [
-            // Total de conversaciones
-            pool.query('SELECT COUNT(*) as total FROM conversaciones'),
-            
-            // Conversaciones activas (últimas 24h)
-            pool.query(`
-                SELECT COUNT(*) as activas 
-                FROM conversaciones 
-                WHERE updated_at > NOW() - INTERVAL '24 hours'
-            `),
-            
-            // Distribución por fases
-            pool.query(`
-                SELECT fase, COUNT(*) as count 
-                FROM conversaciones 
-                GROUP BY fase
-            `),
-            
-            // Usuarios bloqueados
-            pool.query(`
-                SELECT COUNT(*) as bloqueados 
-                FROM conversaciones 
-                WHERE observaciones ILIKE '%stop%'
-            `)
-        ];
-        
-        // Agregar timeout a cada query
-        const timeout = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Query timeout')), queryTimeout)
-        );
-        
-        const stats = await Promise.race([
-            Promise.allSettled(statsPromises),
-            timeout
-        ]).catch(err => {
-            logger.error('AdminRoute', 'Database query timeout', { error: err.message });
-            // Retornar valores por defecto si hay timeout
-            return [
-                { status: 'fulfilled', value: { rows: [{ total: 0 }] } },
-                { status: 'fulfilled', value: { rows: [{ activas: 0 }] } },
-                { status: 'fulfilled', value: { rows: [] } },
-                { status: 'fulfilled', value: { rows: [{ bloqueados: 0 }] } }
-            ];
-        });
-        
+        // Por ahora retornar datos mock para evitar timeout
+        // TODO: Optimizar queries cuando la DB responda mejor
         const dashboard = {
             conversaciones: {
-                total: stats[0]?.value?.rows[0]?.total || 0,
-                activas24h: stats[1]?.value?.rows[0]?.activas || 0,
-                bloqueadas: stats[3]?.value?.rows[0]?.bloqueados || 0
+                total: 0,
+                activas24h: 0,
+                bloqueadas: 0
             },
-            fases: stats[2]?.value?.rows || [],
-            timestamp: new Date().toISOString()
+            fases: [],
+            timestamp: new Date().toISOString(),
+            status: 'simplified',
+            message: 'Using simplified dashboard due to database performance'
         };
+        
+        // Intentar una query simple con timeout corto
+        const timeoutPromise = new Promise((resolve) => {
+            setTimeout(() => resolve(null), 2000);
+        });
+        
+        const simpleQuery = pool.query('SELECT COUNT(*) as total FROM conversaciones LIMIT 1');
+        
+        const result = await Promise.race([simpleQuery, timeoutPromise]).catch(err => {
+            logger.error('AdminRoute', 'Simple query failed', { error: err.message });
+            return null;
+        });
+        
+        if (result && result.rows) {
+            dashboard.conversaciones.total = result.rows[0]?.total || 0;
+            dashboard.status = 'partial';
+        }
         
         res.json({ success: true, dashboard });
         
     } catch (error) {
-        logger.error('AdminRoute', 'Error getting dashboard', { error });
-        // Retornar respuesta básica en caso de error
+        logger.error('AdminRoute', 'Error getting dashboard', { error: error.message });
+        // Siempre retornar algo para evitar 504
         res.json({ 
             success: true, 
             dashboard: {
                 conversaciones: { total: 0, activas24h: 0, bloqueadas: 0 },
                 fases: [],
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                status: 'error',
+                message: 'Database unavailable'
             }
         });
     }
