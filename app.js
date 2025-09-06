@@ -161,6 +161,11 @@ app.post('/soporte', async (req, res) => {
 });
 
 
+// Root route - redirect to admin panel
+app.get('/', (req, res) => {
+    res.redirect('/admin.html');
+});
+
 // Health check endpoints
 app.get('/health', HealthCheckService.basicHealthCheck);
 app.get('/health/detailed', HealthCheckService.detailedHealthCheck);
