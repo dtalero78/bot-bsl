@@ -9,7 +9,15 @@ if (missingVars.length > 0) {
     console.warn('📝 Usando valores por defecto para desarrollo. Configure las variables para producción.');
 }
 
-const pool = new Pool({
+// Configuración de la base de datos usando DATABASE_URL o variables individuales
+const dbConfig = process.env.DATABASE_URL ? {
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+    // Configuración optimizada del pool
+    max: parseInt(process.env.DB_POOL_MAX) || 20,
+    idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT) || 30000,
+    connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT) || 2000
+} : {
     host: process.env.DB_HOST || 'app-2f5bcc3a-7a70-446d-a9ae-423f916b4d92-do-user-19197755-0.f.db.ondigitalocean.com',
     port: parseInt(process.env.DB_PORT) || 25060,
     user: process.env.DB_USER || 'bot-bsl-db',
@@ -20,7 +28,9 @@ const pool = new Pool({
     max: parseInt(process.env.DB_POOL_MAX) || 20,
     idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT) || 30000,
     connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT) || 2000
-});
+};
+
+const pool = new Pool(dbConfig);
 
 // Crear tablas e índices optimizados
 async function initializeDatabase() {

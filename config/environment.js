@@ -40,13 +40,18 @@ function validateEnvironment(isProduction = false) {
         }
     });
     
-    // En producción, validar todas las variables requeridas
+    // En producción, validar base de datos (DATABASE_URL o variables individuales)
     if (isProduction) {
-        REQUIRED_PRODUCTION_VARS.forEach(varName => {
-            if (!process.env[varName]) {
-                missingVars.push(varName);
+        const hasDatabase_URL = process.env.DATABASE_URL;
+        const hasIndividualVars = process.env.DB_HOST && process.env.DB_PORT && 
+                                  process.env.DB_USER && process.env.DB_PASSWORD && 
+                                  process.env.DB_NAME;
+        
+        if (!hasDatabase_URL && !hasIndividualVars) {
+            if (!hasDatabase_URL) {
+                missingVars.push('DATABASE_URL o variables DB individuales');
             }
-        });
+        }
     }
     
     return missingVars;
@@ -105,8 +110,9 @@ const config = {
         }
     },
     
-    // Base de datos
+    // Base de datos - soporta DATABASE_URL o variables individuales
     database: {
+        url: getEnvVar('DATABASE_URL'), // Digital Ocean proporciona esta variable
         host: getEnvVar('DB_HOST', 'app-2f5bcc3a-7a70-446d-a9ae-423f916b4d92-do-user-19197755-0.f.db.ondigitalocean.com'),
         port: getEnvVar('DB_PORT', 25060, 'number'),
         user: getEnvVar('DB_USER', 'bot-bsl-db'),
