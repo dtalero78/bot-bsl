@@ -9,7 +9,13 @@ if (missingVars.length > 0) {
     console.warn('📝 Usando valores por defecto para desarrollo. Configure las variables para producción.');
 }
 
-// Configuración de la base de datos usando DATABASE_URL o variables individuales
+// Configuración de la base de datos con logs de debug
+console.log('🔍 DEBUG - Variables de entorno de DB:');
+console.log('DATABASE_URL:', process.env.DATABASE_URL ? '***CONFIGURADO***' : 'NO ENCONTRADO');
+console.log('DB_HOST:', process.env.DB_HOST);
+console.log('DB_USER:', process.env.DB_USER);
+console.log('DB_NAME:', process.env.DB_NAME);
+
 const dbConfig = process.env.DATABASE_URL ? {
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
@@ -23,12 +29,21 @@ const dbConfig = process.env.DATABASE_URL ? {
     user: process.env.DB_USER || 'bot-bsl-db',
     password: process.env.DB_PASSWORD, // Required - must be set in environment
     database: process.env.DB_NAME || 'bot-bsl-db',
-    ssl: { rejectUnauthorized: false },
+    ssl: { 
+        rejectUnauthorized: false,
+        require: true,
+        ca: false
+    },
     // Configuración optimizada del pool
     max: parseInt(process.env.DB_POOL_MAX) || 20,
     idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT) || 30000,
     connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT) || 2000
 };
+
+console.log('🔍 DEBUG - Configuración de DB que se usará:');
+console.log('Usando DATABASE_URL:', !!process.env.DATABASE_URL);
+console.log('Host final:', dbConfig.host || 'desde connectionString');
+console.log('SSL config:', dbConfig.ssl);
 
 const pool = new Pool(dbConfig);
 

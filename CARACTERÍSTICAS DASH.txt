@@ -99,3 +99,4 @@
 
   El dashboard está completamente funcional y listo para administrar el bot BSL de manera profesional. ¿Te gustaría que ajuste
   alguna funcionalidad específica o agreguemos alguna característica adicional?
+q
