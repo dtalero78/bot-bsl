@@ -104,6 +104,89 @@ router.get('/env/check', async (req, res) => {
 });
 
 /**
+ * Cargar números masivamente para marcar como stopBot
+ */
+router.post('/bulk/stopbot', async (req, res) => {
+    try {
+        const { numbers, reason } = req.body;
+        
+        if (!numbers || !Array.isArray(numbers) || numbers.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Debe proporcionar un array de números'
+            });
+        }
+        
+        const results = {
+            processed: 0,
+            created: 0,
+            updated: 0,
+            errors: []
+        };
+        
+        for (const number of numbers) {
+            try {
+                const cleanNumber = number.toString().trim();
+                if (!cleanNumber) continue;
+                
+                // Intentar actualizar si existe
+                const updateResult = await pool.query(`
+                    UPDATE conversaciones 
+                    SET observaciones = $1, updated_at = CURRENT_TIMESTAMP 
+                    WHERE user_id = $2
+                `, [`stop - ${reason || 'Carga masiva'}`, cleanNumber]);
+                
+                if (updateResult.rowCount > 0) {
+                    results.updated++;
+                } else {
+                    // Crear nuevo registro si no existe
+                    await pool.query(`
+                        INSERT INTO conversaciones (user_id, nombre, mensajes, observaciones, fase, created_at, updated_at)
+                        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        ON CONFLICT (user_id) 
+                        DO UPDATE SET 
+                            observaciones = EXCLUDED.observaciones,
+                            updated_at = CURRENT_TIMESTAMP
+                    `, [
+                        cleanNumber,
+                        'Usuario bloqueado',
+                        JSON.stringify([]),
+                        `stop - ${reason || 'Carga masiva'}`,
+                        'inicial'
+                    ]);
+                    results.created++;
+                }
+                
+                results.processed++;
+                
+            } catch (error) {
+                results.errors.push({ number, error: error.message });
+            }
+        }
+        
+        logger.info('AdminRoute', `Bulk stopBot upload completed`, {
+            processed: results.processed,
+            created: results.created,
+            updated: results.updated,
+            errors: results.errors.length
+        });
+        
+        res.json({ 
+            success: true, 
+            results,
+            message: `Procesados: ${results.processed}, Creados: ${results.created}, Actualizados: ${results.updated}` 
+        });
+        
+    } catch (error) {
+        logger.error('AdminRoute', 'Error in bulk stopBot upload', { error: error.message });
+        res.status(500).json({ 
+            success: false, 
+            error: 'Error procesando la carga masiva' 
+        });
+    }
+});
+
+/**
  * Ultra simple database test - solo verificar conexión
  */
 router.get('/db/ping', async (req, res) => {

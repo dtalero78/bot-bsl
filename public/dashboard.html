@@ -249,6 +249,51 @@
             </div>
         </div>
         
+        <!-- Sección de carga masiva de StopBot -->
+        <div class="conversations-section">
+            <div class="conversations-header">
+                <h2>🚫 Carga Masiva StopBot</h2>
+                <p>Agregar números que deben estar bloqueados del bot</p>
+            </div>
+            
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                <div class="row">
+                    <div class="col-md-8">
+                        <label for="bulkNumbers" style="font-weight: bold; margin-bottom: 8px;">Números (uno por línea, separados por comas o espacios):</label>
+                        <textarea 
+                            id="bulkNumbers" 
+                            rows="8" 
+                            placeholder="573001234567&#10;573009876543&#10;573001111111&#10;o separados por comas: 573001234567, 573009876543"
+                            style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace;"></textarea>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="stopReason" style="font-weight: bold; margin-bottom: 8px;">Razón del bloqueo:</label>
+                        <input 
+                            type="text" 
+                            id="stopReason" 
+                            placeholder="Ej: Lista negra inicial" 
+                            style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 15px;">
+                        
+                        <button 
+                            onclick="bulkStopBot()" 
+                            style="width: 100%; padding: 12px; background: #dc3545; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;"
+                            onmouseover="this.style.background='#c82333'" 
+                            onmouseout="this.style.background='#dc3545'">
+                            🚫 Bloquear Números
+                        </button>
+                        
+                        <div style="margin-top: 15px; padding: 10px; background: #e9ecef; border-radius: 4px; font-size: 12px;">
+                            <strong>Formatos soportados:</strong><br>
+                            • Un número por línea<br>
+                            • Separados por comas<br>
+                            • Separados por espacios<br>
+                            • Con o sin prefijo +57
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <div class="conversations-section">
             <div class="conversations-header">
                 <h2>Conversaciones Recientes</h2>

@@ -764,6 +764,54 @@ class BotDashboard {
         }
     }
 
+    async bulkStopBot() {
+        const numbersText = document.getElementById('bulkNumbers').value.trim();
+        const reason = document.getElementById('stopReason').value.trim() || 'Carga masiva';
+        
+        if (!numbersText) {
+            alert('Debe ingresar al menos un número');
+            return;
+        }
+        
+        // Parsear números (separados por líneas, comas, espacios)
+        const numbers = numbersText
+            .split(/[\n,\s]+/)
+            .map(n => n.trim())
+            .filter(n => n.length > 0);
+            
+        if (numbers.length === 0) {
+            alert('No se encontraron números válidos');
+            return;
+        }
+        
+        if (!confirm(`¿Está seguro de marcar ${numbers.length} números como stopBot?`)) {
+            return;
+        }
+        
+        try {
+            const response = await this.apiCall('/api/admin/bulk/stopbot', 'POST', {
+                numbers: numbers,
+                reason: reason
+            });
+            
+            if (response.success) {
+                this.showSuccess(`Éxito: ${response.message}`);
+                document.getElementById('bulkNumbers').value = '';
+                document.getElementById('stopReason').value = '';
+                
+                // Mostrar detalles si hay errores
+                if (response.results.errors.length > 0) {
+                    console.log('Errores encontrados:', response.results.errors);
+                    alert(`Procesado con ${response.results.errors.length} errores. Ver consola para detalles.`);
+                }
+            } else {
+                alert(`Error: ${response.error}`);
+            }
+        } catch (error) {
+            alert(`Error: ${error.message}`);
+        }
+    }
+
     showSuccess(message) {
         const alert = document.createElement('div');
         alert.className = 'alert alert-success alert-dismissible fade show position-fixed';
@@ -783,6 +831,10 @@ class BotDashboard {
 // Global functions for onclick handlers
 function logout() {
     dashboard.logout();
+}
+
+function bulkStopBot() {
+    dashboard.bulkStopBot();
 }
 
 // Initialize dashboard
