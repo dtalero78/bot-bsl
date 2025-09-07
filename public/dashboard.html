@@ -470,10 +470,15 @@
         // Initial load
         loadData();
         
-        // Función para carga masiva de StopBot
+        // Función para carga masiva de StopBot con debug
         async function submitBulkStopBot() {
+            console.log('=== INICIO BULK STOPBOT ===');
+            
             const numbersText = document.getElementById('bulkNumbers').value.trim();
             const reason = document.getElementById('stopReason').value.trim() || 'Carga masiva';
+            
+            console.log('Texto de números:', numbersText);
+            console.log('Razón:', reason);
             
             if (!numbersText) {
                 alert('Debe ingresar al menos un número');
@@ -486,35 +491,53 @@
                 .map(n => n.trim())
                 .filter(n => n.length > 0);
                 
+            console.log('Números parseados:', numbers);
+            console.log('Cantidad de números:', numbers.length);
+            
             if (numbers.length === 0) {
                 alert('No se encontraron números válidos');
                 return;
             }
             
             if (!confirm(`¿Está seguro de marcar ${numbers.length} números como stopBot?`)) {
+                console.log('Cancelado por usuario');
                 return;
             }
             
+            console.log('Confirmado, enviando petición...');
+            console.log('Token:', API_TOKEN);
+            
             try {
+                const requestData = {
+                    numbers: numbers,
+                    reason: reason
+                };
+                
+                console.log('Datos a enviar:', requestData);
+                
                 const response = await fetch('/api/admin/bulk/stopbot', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${API_TOKEN}`
                     },
-                    body: JSON.stringify({
-                        numbers: numbers,
-                        reason: reason
-                    })
+                    body: JSON.stringify(requestData)
                 });
                 
+                console.log('Respuesta HTTP status:', response.status);
+                console.log('Respuesta HTTP ok:', response.ok);
+                
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const errorText = await response.text();
+                    console.error('Error HTTP:', response.status, errorText);
+                    throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
                 }
                 
                 const data = await response.json();
+                console.log('Datos de respuesta:', data);
                 
                 if (data.success) {
+                    console.log('Éxito en el servidor');
                     alert(`Éxito: ${data.message}`);
                     document.getElementById('bulkNumbers').value = '';
                     document.getElementById('stopReason').value = '';
@@ -523,16 +546,20 @@
                     loadData();
                     
                     // Mostrar detalles si hay errores
-                    if (data.results.errors.length > 0) {
+                    if (data.results && data.results.errors && data.results.errors.length > 0) {
                         console.log('Errores encontrados:', data.results.errors);
                         alert(`Procesado con ${data.results.errors.length} errores. Ver consola para detalles.`);
                     }
                 } else {
+                    console.error('Error del servidor:', data.error);
                     alert(`Error: ${data.error}`);
                 }
             } catch (error) {
+                console.error('Error en catch:', error);
                 alert(`Error: ${error.message}`);
             }
+            
+            console.log('=== FIN BULK STOPBOT ===');
         }
     </script>
 </body>
