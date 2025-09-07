@@ -398,6 +398,51 @@ router.get('/conversations/:userId', async (req, res) => {
 });
 
 /**
+ * Corregir observaciones de usuarios bloqueados (migración)
+ */
+router.post('/fix-blocked-users', async (req, res) => {
+    try {
+        logger.info('AdminRoute', 'Starting fix for blocked users observations');
+        
+        // Actualizar todos los registros que tienen 'stop' en observaciones pero no exactamente 'stop'
+        const result = await pool.query(`
+            UPDATE conversaciones 
+            SET observaciones = 'stop',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE observaciones LIKE 'stop%' 
+            AND observaciones != 'stop'
+            RETURNING user_id
+        `);
+        
+        const fixedCount = result.rowCount;
+        
+        logger.info('AdminRoute', `Fixed ${fixedCount} blocked users`);
+        
+        // También obtener el total de usuarios bloqueados después del fix
+        const totalResult = await pool.query(`
+            SELECT COUNT(*) as total 
+            FROM conversaciones 
+            WHERE observaciones = 'stop'
+        `);
+        
+        res.json({
+            success: true,
+            message: `Corregidos ${fixedCount} usuarios bloqueados`,
+            fixed: fixedCount,
+            totalBlocked: parseInt(totalResult.rows[0].total),
+            fixedUsers: result.rows.map(r => r.user_id)
+        });
+        
+    } catch (error) {
+        logger.error('AdminRoute', 'Error fixing blocked users', { error });
+        res.status(500).json({ 
+            success: false, 
+            error: 'Error corrigiendo usuarios bloqueados' 
+        });
+    }
+});
+
+/**
  * Obtener todos los usuarios bloqueados
  */
 router.get('/blocked-users', async (req, res) => {

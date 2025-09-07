@@ -249,6 +249,22 @@
             </div>
         </div>
         
+        <!-- Botón de corrección de datos (temporal) -->
+        <div class="conversations-section" style="background: #fff3cd; border: 2px solid #ffc107; margin-bottom: 20px;">
+            <div style="padding: 15px;">
+                <h3 style="color: #856404; margin: 0 0 10px 0;">⚠️ Corrección de Datos</h3>
+                <p style="color: #856404; margin: 0 0 15px 0;">
+                    Si has subido números y no aparecen como bloqueados, ejecuta esta corrección:
+                </p>
+                <button 
+                    onclick="fixBlockedUsers()" 
+                    style="padding: 10px 20px; background: #ffc107; color: #000; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">
+                    🔧 Corregir Usuarios Bloqueados
+                </button>
+                <div id="fixResult" style="margin-top: 10px; display: none;"></div>
+            </div>
+        </div>
+        
         <!-- Sección de búsqueda y gestión de usuarios bloqueados -->
         <div class="conversations-section">
             <div class="conversations-header">
@@ -673,6 +689,58 @@
             }
             
             console.log('=== FIN BULK STOPBOT ===');
+        }
+        
+        // Función para corregir usuarios bloqueados
+        async function fixBlockedUsers() {
+            const button = event.target;
+            button.disabled = true;
+            button.textContent = '⏳ Corrigiendo...';
+            
+            try {
+                const response = await fetch('/api/admin/fix-blocked-users', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${API_TOKEN}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                const resultDiv = document.getElementById('fixResult');
+                
+                if (data.success) {
+                    resultDiv.style.display = 'block';
+                    resultDiv.style.color = '#155724';
+                    resultDiv.style.background = '#d4edda';
+                    resultDiv.style.padding = '10px';
+                    resultDiv.style.borderRadius = '4px';
+                    resultDiv.innerHTML = `
+                        ✅ <strong>Corrección completada</strong><br>
+                        - Usuarios corregidos: ${data.fixed}<br>
+                        - Total bloqueados ahora: ${data.totalBlocked}
+                    `;
+                    
+                    // Recargar el dashboard para actualizar las estadísticas
+                    setTimeout(() => {
+                        loadDashboard();
+                    }, 1000);
+                } else {
+                    resultDiv.style.display = 'block';
+                    resultDiv.style.color = '#721c24';
+                    resultDiv.style.background = '#f8d7da';
+                    resultDiv.style.padding = '10px';
+                    resultDiv.style.borderRadius = '4px';
+                    resultDiv.innerHTML = `❌ Error: ${data.error}`;
+                }
+            } catch (error) {
+                console.error('Error ejecutando corrección:', error);
+                alert('Error al ejecutar la corrección');
+            } finally {
+                button.disabled = false;
+                button.textContent = '🔧 Corregir Usuarios Bloqueados';
+            }
         }
         
         // Funciones para buscar y gestionar usuarios bloqueados
