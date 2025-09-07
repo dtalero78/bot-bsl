@@ -837,5 +837,25 @@ function bulkStopBot() {
     dashboard.bulkStopBot();
 }
 
+function filterConversations() {
+    dashboard.filterConversations();
+}
+
+function refreshMetrics() {
+    dashboard.refreshMetrics();
+}
+
+function refreshHealth() {
+    dashboard.refreshHealth();
+}
+
+function clearCache() {
+    dashboard.clearCache();
+}
+
+function resetMetrics() {
+    dashboard.resetMetrics();
+}
+
 // Initialize dashboard
 const dashboard = new BotDashboard();
