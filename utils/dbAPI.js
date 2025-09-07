@@ -16,8 +16,11 @@ console.log('DB_HOST:', process.env.DB_HOST);
 console.log('DB_USER:', process.env.DB_USER);
 console.log('DB_NAME:', process.env.DB_NAME);
 
+// Forzar deshabilitación completa de SSL
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 const dbConfig = process.env.DATABASE_URL ? {
-    connectionString: process.env.DATABASE_URL,
+    connectionString: process.env.DATABASE_URL + '?sslmode=disable',
     ssl: false,
     // Configuración optimizada del pool
     max: parseInt(process.env.DB_POOL_MAX) || 20,
