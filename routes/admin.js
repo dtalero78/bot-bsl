@@ -320,20 +320,28 @@ router.get('/conversations', async (req, res) => {
     try {
         logger.info('AdminRoute', 'Conversations request received');
         
-        // Timeout para evitar SSL hanging
-        const timeout = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Query timeout')), 3000)
-        );
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const offset = (page - 1) * limit;
         
-        // Query muy simple para evitar SSL issues
-        const simpleQuery = pool.query('SELECT COUNT(*) as total FROM conversaciones LIMIT 1');
+        // Obtener total de conversaciones
+        const totalCount = await pool.query('SELECT COUNT(*) as total FROM conversaciones');
         
-        const result = await Promise.race([simpleQuery, timeout]).catch(err => {
-            logger.error('AdminRoute', 'Conversations query failed', { error: err.message });
-            return { rows: [{ total: 0 }] };
-        });
+        // Obtener conversaciones con paginación
+        const conversations = await pool.query(`
+            SELECT 
+                user_id, 
+                nombre, 
+                fase, 
+                observaciones,
+                updated_at,
+                created_at,
+                jsonb_array_length(mensajes) as message_count
+            FROM conversaciones 
+            ORDER BY updated_at DESC 
+            LIMIT $1 OFFSET $2
+        `, [limit, offset]);
         
-        // Respuesta mock por ahora hasta que se resuelva SSL
         res.json({
             success: true,
             conversations: conversations.rows,
