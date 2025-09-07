@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor de Flujo BSL Bot</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .header {
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            color: #333;
+            margin: 0;
+        }
+
+        .main-container {
+            display: flex;
+            height: calc(100vh - 70px);
+            background: white;
+        }
+
+        /* Panel Lateral */
+        .sidebar {
+            width: 280px;
+            background: #f8f9fa;
+            border-right: 1px solid #dee2e6;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .node-palette {
+            margin-bottom: 30px;
+        }
+
+        .node-palette h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #6c757d;
+            text-transform: uppercase;
+            margin-bottom: 15px;
+        }
+
+        .draggable-node {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            cursor: move;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .draggable-node:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .draggable-node i {
+            font-size: 20px;
+            width: 30px;
+            text-align: center;
+        }
+
+        .node-label {
+            flex: 1;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        /* Canvas Principal */
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: #fafafa;
+            background-image: 
+                linear-gradient(0deg, transparent 24%, rgba(0, 0, 0, .02) 25%, rgba(0, 0, 0, .02) 26%, transparent 27%, transparent 74%, rgba(0, 0, 0, .02) 75%, rgba(0, 0, 0, .02) 76%, transparent 77%, transparent),
+                linear-gradient(90deg, transparent 24%, rgba(0, 0, 0, .02) 25%, rgba(0, 0, 0, .02) 26%, transparent 27%, transparent 74%, rgba(0, 0, 0, .02) 75%, rgba(0, 0, 0, .02) 76%, transparent 77%, transparent);
+            background-size: 50px 50px;
+        }
+
+        #flow-canvas {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        /* Nodos en el Canvas */
+        .flow-node {
+            position: absolute;
+            background: white;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            min-width: 200px;
+            cursor: move;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .flow-node.selected {
+            border-color: #667eea;
+            box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
+        }
+
+        .flow-node.initial {
+            border-color: #28a745;
+            background: #d4edda;
+        }
+
+        .flow-node.condition {
+            border-color: #ffc107;
+            background: #fff3cd;
+            transform: rotate(45deg);
+            padding: 30px;
+        }
+
+        .flow-node.condition .node-content {
+            transform: rotate(-45deg);
+        }
+
+        .flow-node.action {
+            border-color: #007bff;
+            background: #cce5ff;
+        }
+
+        .flow-node.menu {
+            border-color: #6f42c1;
+            background: #e2d9f3;
+        }
+
+        .flow-node.transfer {
+            border-color: #dc3545;
+            background: #f8d7da;
+        }
+
+        .node-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .node-icon {
+            font-size: 20px;
+        }
+
+        .node-title {
+            font-weight: 600;
+            font-size: 14px;
+            flex: 1;
+        }
+
+        .node-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        .node-actions button {
+            background: none;
+            border: none;
+            color: #6c757d;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+
+        .node-actions button:hover {
+            background: rgba(0,0,0,0.05);
+            color: #333;
+        }
+
+        .node-content {
+            font-size: 13px;
+            color: #495057;
+        }
+
+        .node-options {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .node-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px;
+            margin: 2px 0;
+            background: rgba(255,255,255,0.7);
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .connection-point {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: #667eea;
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: crosshair;
+            z-index: 10;
+        }
+
+        .connection-point.input {
+            left: -6px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .connection-point.output {
+            right: -6px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        /* Panel de Propiedades */
+        .properties-panel {
+            width: 320px;
+            background: white;
+            border-left: 1px solid #dee2e6;
+            padding: 20px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .properties-panel.active {
+            display: block;
+        }
+
+        .property-group {
+            margin-bottom: 25px;
+        }
+
+        .property-group h4 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .property-field {
+            margin-bottom: 15px;
+        }
+
+        .property-field label {
+            display: block;
+            font-size: 12px;
+            color: #6c757d;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .property-field input,
+        .property-field textarea,
+        .property-field select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .property-field input:focus,
+        .property-field textarea:focus,
+        .property-field select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        /* Toolbar */
+        .toolbar {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .toolbar button {
+            padding: 8px 16px;
+            border: none;
+            background: #667eea;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toolbar button:hover {
+            background: #5a67d8;
+            transform: translateY(-1px);
+        }
+
+        .toolbar button.secondary {
+            background: #6c757d;
+        }
+
+        .toolbar button.secondary:hover {
+            background: #5a6268;
+        }
+
+        /* SVG Connections */
+        .connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .connection-line {
+            stroke: #667eea;
+            stroke-width: 2;
+            fill: none;
+            marker-end: url(#arrowhead);
+        }
+
+        .connection-line.hover {
+            stroke: #ff6b6b;
+            stroke-width: 3;
+        }
+
+        /* Modal */
+        .modal-backdrop.show {
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-content {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+
+        /* Zoom Controls */
+        .zoom-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            padding: 5px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            z-index: 100;
+        }
+
+        .zoom-controls button {
+            width: 36px;
+            height: 36px;
+            border: none;
+            background: transparent;
+            color: #6c757d;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .zoom-controls button:hover {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .zoom-level {
+            text-align: center;
+            font-size: 12px;
+            color: #6c757d;
+            padding: 5px;
+            border-top: 1px solid #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1><i class="fas fa-project-diagram"></i> Editor de Flujo - BSL Bot</h1>
+        <div>
+            <button class="btn btn-outline-secondary btn-sm me-2" onclick="window.location.href='/admin'">
+                <i class="fas fa-arrow-left"></i> Volver al Panel
+            </button>
+            <button class="btn btn-success btn-sm" onclick="deployFlow()">
+                <i class="fas fa-rocket"></i> Aplicar Cambios
+            </button>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <!-- Panel Lateral - Paleta de Nodos -->
+        <div class="sidebar">
+            <div class="node-palette">
+                <h3>Nodos Básicos</h3>
+                
+                <div class="draggable-node" draggable="true" data-node-type="start">
+                    <i class="fas fa-play-circle text-success"></i>
+                    <span class="node-label">Inicio</span>
+                </div>
+
+                <div class="draggable-node" draggable="true" data-node-type="message">
+                    <i class="fas fa-comment text-primary"></i>
+                    <span class="node-label">Mensaje</span>
+                </div>
+
+                <div class="draggable-node" draggable="true" data-node-type="menu">
+                    <i class="fas fa-list text-purple"></i>
+                    <span class="node-label">Menú Opciones</span>
+                </div>
+
+                <div class="draggable-node" draggable="true" data-node-type="condition">
+                    <i class="fas fa-code-branch text-warning"></i>
+                    <span class="node-label">Condición</span>
+                </div>
+
+                <div class="draggable-node" draggable="true" data-node-type="input">
+                    <i class="fas fa-keyboard text-info"></i>
+                    <span class="node-label">Solicitar Input</span>
+                </div>
+            </div>
+
+            <div class="node-palette">
+                <h3>Acciones</h3>
+                
+                <div class="draggable-node" draggable="true" data-node-type="api">
+                    <i class="fas fa-plug text-secondary"></i>
+                    <span class="node-label">Llamada API</span>
+                </div>
+
+                <div class="draggable-node" draggable="true" data-node-type="database">
+                    <i class="fas fa-database text-dark"></i>
+                    <span class="node-label">Consulta BD</span>
+                </div>
+
+                <div class="draggable-node" draggable="true" data-node-type="transfer">
+                    <i class="fas fa-user-tie text-danger"></i>
+                    <span class="node-label">Transferir Asesor</span>
+                </div>
+
+                <div class="draggable-node" draggable="true" data-node-type="ai">
+                    <i class="fas fa-robot text-success"></i>
+                    <span class="node-label">Respuesta IA</span>
+                </div>
+
+                <div class="draggable-node" draggable="true" data-node-type="end">
+                    <i class="fas fa-stop-circle text-danger"></i>
+                    <span class="node-label">Fin</span>
+                </div>
+            </div>
+
+            <div class="node-palette">
+                <h3>Procesamiento</h3>
+                
+                <div class="draggable-node" draggable="true" data-node-type="image">
+                    <i class="fas fa-image text-info"></i>
+                    <span class="node-label">Procesar Imagen</span>
+                </div>
+
+                <div class="draggable-node" draggable="true" data-node-type="payment">
+                    <i class="fas fa-credit-card text-success"></i>
+                    <span class="node-label">Procesar Pago</span>
+                </div>
+
+                <div class="draggable-node" draggable="true" data-node-type="pdf">
+                    <i class="fas fa-file-pdf text-danger"></i>
+                    <span class="node-label">Generar PDF</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Canvas Principal -->
+        <div class="canvas-container">
+            <div class="toolbar">
+                <button onclick="saveFlow()">
+                    <i class="fas fa-save"></i> Guardar
+                </button>
+                <button onclick="loadFlow()">
+                    <i class="fas fa-folder-open"></i> Cargar
+                </button>
+                <button onclick="clearCanvas()" class="secondary">
+                    <i class="fas fa-trash"></i> Limpiar
+                </button>
+                <button onclick="autoArrange()" class="secondary">
+                    <i class="fas fa-magic"></i> Auto Organizar
+                </button>
+                <button onclick="exportFlow()">
+                    <i class="fas fa-download"></i> Exportar
+                </button>
+                <button onclick="testFlow()">
+                    <i class="fas fa-play"></i> Probar
+                </button>
+            </div>
+
+            <div id="flow-canvas">
+                <svg class="connections-svg">
+                    <defs>
+                        <marker id="arrowhead" markerWidth="10" markerHeight="10" 
+                                refX="9" refY="3" orient="auto">
+                            <polygon points="0 0, 10 3, 0 6" fill="#667eea" />
+                        </marker>
+                    </defs>
+                </svg>
+            </div>
+
+            <div class="zoom-controls">
+                <button onclick="zoomIn()">
+                    <i class="fas fa-search-plus"></i>
+                </button>
+                <button onclick="zoomOut()">
+                    <i class="fas fa-search-minus"></i>
+                </button>
+                <button onclick="zoomReset()">
+                    <i class="fas fa-compress"></i>
+                </button>
+                <div class="zoom-level">100%</div>
+            </div>
+        </div>
+
+        <!-- Panel de Propiedades -->
+        <div class="properties-panel" id="properties-panel">
+            <h3>Propiedades del Nodo</h3>
+            
+            <div class="property-group">
+                <h4>General</h4>
+                <div class="property-field">
+                    <label>ID del Nodo</label>
+                    <input type="text" id="node-id" readonly>
+                </div>
+                <div class="property-field">
+                    <label>Nombre</label>
+                    <input type="text" id="node-name" placeholder="Ingrese un nombre">
+                </div>
+                <div class="property-field">
+                    <label>Tipo</label>
+                    <select id="node-type" disabled>
+                        <option>Mensaje</option>
+                        <option>Menú</option>
+                        <option>Condición</option>
+                        <option>Acción</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="property-group" id="message-properties" style="display: none;">
+                <h4>Contenido del Mensaje</h4>
+                <div class="property-field">
+                    <label>Texto</label>
+                    <textarea id="message-text" rows="4" placeholder="Escriba el mensaje..."></textarea>
+                </div>
+                <div class="property-field">
+                    <label>Formato</label>
+                    <select id="message-format">
+                        <option value="text">Texto Simple</option>
+                        <option value="markdown">Markdown</option>
+                        <option value="html">HTML</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="property-group" id="menu-properties" style="display: none;">
+                <h4>Opciones del Menú</h4>
+                <div id="menu-options-container">
+                    <!-- Opciones dinámicas -->
+                </div>
+                <button class="btn btn-sm btn-outline-primary w-100" onclick="addMenuOption()">
+                    <i class="fas fa-plus"></i> Agregar Opción
+                </button>
+            </div>
+
+            <div class="property-group" id="condition-properties" style="display: none;">
+                <h4>Configuración de Condición</h4>
+                <div class="property-field">
+                    <label>Variable a Evaluar</label>
+                    <input type="text" id="condition-variable" placeholder="ej: userMessage">
+                </div>
+                <div class="property-field">
+                    <label>Operador</label>
+                    <select id="condition-operator">
+                        <option value="equals">Igual a</option>
+                        <option value="contains">Contiene</option>
+                        <option value="startsWith">Empieza con</option>
+                        <option value="regex">Regex</option>
+                    </select>
+                </div>
+                <div class="property-field">
+                    <label>Valor</label>
+                    <input type="text" id="condition-value" placeholder="Valor a comparar">
+                </div>
+            </div>
+
+            <div class="property-group">
+                <h4>Acciones</h4>
+                <button class="btn btn-danger btn-sm w-100" onclick="deleteSelectedNode()">
+                    <i class="fas fa-trash"></i> Eliminar Nodo
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Prueba -->
+    <div class="modal fade" id="testModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Probar Flujo</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="chat-container" style="height: 400px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 8px; padding: 15px;">
+                        <!-- Chat simulado -->
+                    </div>
+                    <div class="input-group mt-3">
+                        <input type="text" class="form-control" placeholder="Escribe un mensaje...">
+                        <button class="btn btn-primary">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Estado Global
+        let nodes = [];
+        let connections = [];
+        let selectedNode = null;
+        let connectionStart = null;
+        let nodeIdCounter = 1;
+        let zoomLevel = 1;
+        let isDragging = false;
+        let draggedNode = null;
+        let currentFlow = null;
+
+        // Inicialización
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeCanvas();
+            loadExistingFlow();
+            setupEventListeners();
+        });
+
+        function initializeCanvas() {
+            const canvas = document.getElementById('flow-canvas');
+            
+            // Permitir drop en el canvas
+            canvas.addEventListener('dragover', handleDragOver);
+            canvas.addEventListener('drop', handleDrop);
+            
+            // Click en el canvas para deseleccionar
+            canvas.addEventListener('click', function(e) {
+                if (e.target === canvas) {
+                    deselectAll();
+                }
+            });
+        }
+
+        function setupEventListeners() {
+            // Draggable nodes desde la paleta
+            document.querySelectorAll('.draggable-node').forEach(node => {
+                node.addEventListener('dragstart', handleDragStart);
+            });
+        }
+
+        function handleDragStart(e) {
+            e.dataTransfer.effectAllowed = 'copy';
+            e.dataTransfer.setData('nodeType', e.target.dataset.nodeType);
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            const nodeType = e.dataTransfer.getData('nodeType');
+            const canvas = document.getElementById('flow-canvas');
+            const rect = canvas.getBoundingClientRect();
+            
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            createNode(nodeType, x, y);
+        }
+
+        function createNode(type, x, y) {
+            const nodeId = `node-${nodeIdCounter++}`;
+            const node = {
+                id: nodeId,
+                type: type,
+                x: x,
+                y: y,
+                data: getDefaultNodeData(type)
+            };
+            
+            nodes.push(node);
+            renderNode(node);
+            
+            // Si es el primer nodo start, lo marcamos como inicial
+            if (type === 'start' && nodes.filter(n => n.type === 'start').length === 1) {
+                node.data.isInitial = true;
+            }
+        }
+
+        function getDefaultNodeData(type) {
+            const defaults = {
+                start: { title: 'Inicio', icon: 'fa-play-circle', color: 'success' },
+                message: { title: 'Mensaje', text: 'Escribe tu mensaje aquí', icon: 'fa-comment', color: 'primary' },
+                menu: { 
+                    title: 'Menú de Opciones', 
+                    options: [
+                        { text: 'Opción 1', next: null },
+                        { text: 'Opción 2', next: null },
+                        { text: 'Opción 3', next: null }
+                    ],
+                    icon: 'fa-list',
+                    color: 'purple'
+                },
+                condition: { 
+                    title: 'Condición', 
+                    variable: 'userMessage',
+                    operator: 'contains',
+                    value: '',
+                    icon: 'fa-code-branch',
+                    color: 'warning'
+                },
+                input: { title: 'Solicitar Input', prompt: '¿Cuál es tu número de documento?', icon: 'fa-keyboard', color: 'info' },
+                api: { title: 'Llamada API', endpoint: '', method: 'GET', icon: 'fa-plug', color: 'secondary' },
+                database: { title: 'Consulta BD', query: '', icon: 'fa-database', color: 'dark' },
+                transfer: { title: 'Transferir a Asesor', message: '...transfiriendo con asesor', icon: 'fa-user-tie', color: 'danger' },
+                ai: { title: 'Respuesta IA', prompt: '', icon: 'fa-robot', color: 'success' },
+                image: { title: 'Procesar Imagen', action: 'classify', icon: 'fa-image', color: 'info' },
+                payment: { title: 'Procesar Pago', icon: 'fa-credit-card', color: 'success' },
+                pdf: { title: 'Generar PDF', template: 'certificate', icon: 'fa-file-pdf', color: 'danger' },
+                end: { title: 'Fin', icon: 'fa-stop-circle', color: 'danger' }
+            };
+            
+            return defaults[type] || { title: 'Nodo', icon: 'fa-circle' };
+        }
+
+        function renderNode(node) {
+            const canvas = document.getElementById('flow-canvas');
+            const nodeEl = document.createElement('div');
+            nodeEl.className = `flow-node ${node.type}`;
+            nodeEl.id = node.id;
+            nodeEl.style.left = `${node.x}px`;
+            nodeEl.style.top = `${node.y}px`;
+            
+            let nodeContent = `
+                <div class="node-header">
+                    <i class="node-icon fas ${node.data.icon} text-${node.data.color || 'primary'}"></i>
+                    <span class="node-title">${node.data.title}</span>
+                    <div class="node-actions">
+                        <button onclick="editNode('${node.id}')"><i class="fas fa-edit"></i></button>
+                        <button onclick="deleteNode('${node.id}')"><i class="fas fa-times"></i></button>
+                    </div>
+                </div>
+                <div class="node-content">
+            `;
+            
+            // Contenido específico según el tipo
+            switch(node.type) {
+                case 'message':
+                    nodeContent += `<small>${node.data.text || 'Sin mensaje'}</small>`;
+                    break;
+                case 'menu':
+                    nodeContent += `
+                        <div class="node-options">
+                            ${node.data.options.map((opt, i) => `
+                                <div class="node-option">
+                                    <span class="badge bg-secondary">${i+1}</span> ${opt.text}
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                    break;
+                case 'condition':
+                    nodeContent += `<small>${node.data.variable} ${node.data.operator} "${node.data.value}"</small>`;
+                    break;
+                case 'input':
+                    nodeContent += `<small>${node.data.prompt}</small>`;
+                    break;
+            }
+            
+            nodeContent += `
+                </div>
+                <div class="connection-point input"></div>
+                <div class="connection-point output"></div>
+            `;
+            
+            nodeEl.innerHTML = nodeContent;
+            
+            // Event listeners
+            nodeEl.addEventListener('mousedown', startDrag);
+            nodeEl.addEventListener('click', () => selectNode(node.id));
+            
+            // Connection points
+            const outputPoint = nodeEl.querySelector('.connection-point.output');
+            const inputPoint = nodeEl.querySelector('.connection-point.input');
+            
+            outputPoint.addEventListener('click', (e) => {
+                e.stopPropagation();
+                startConnection(node.id, 'output');
+            });
+            
+            inputPoint.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (connectionStart) {
+                    endConnection(node.id, 'input');
+                }
+            });
+            
+            canvas.appendChild(nodeEl);
+        }
+
+        function startDrag(e) {
+            if (e.target.closest('.node-actions')) return;
+            
+            isDragging = true;
+            draggedNode = e.currentTarget;
+            const rect = draggedNode.getBoundingClientRect();
+            draggedNode.dataset.offsetX = e.clientX - rect.left;
+            draggedNode.dataset.offsetY = e.clientY - rect.top;
+            
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', stopDrag);
+        }
+
+        function drag(e) {
+            if (!isDragging || !draggedNode) return;
+            
+            const canvas = document.getElementById('flow-canvas');
+            const rect = canvas.getBoundingClientRect();
+            
+            const x = e.clientX - rect.left - parseFloat(draggedNode.dataset.offsetX);
+            const y = e.clientY - rect.top - parseFloat(draggedNode.dataset.offsetY);
+            
+            draggedNode.style.left = `${x}px`;
+            draggedNode.style.top = `${y}px`;
+            
+            // Actualizar posición en el modelo
+            const node = nodes.find(n => n.id === draggedNode.id);
+            if (node) {
+                node.x = x;
+                node.y = y;
+            }
+            
+            updateConnections();
+        }
+
+        function stopDrag() {
+            isDragging = false;
+            draggedNode = null;
+            document.removeEventListener('mousemove', drag);
+            document.removeEventListener('mouseup', stopDrag);
+        }
+
+        function selectNode(nodeId) {
+            deselectAll();
+            const nodeEl = document.getElementById(nodeId);
+            nodeEl.classList.add('selected');
+            selectedNode = nodes.find(n => n.id === nodeId);
+            showProperties(selectedNode);
+        }
+
+        function deselectAll() {
+            document.querySelectorAll('.flow-node').forEach(n => n.classList.remove('selected'));
+            selectedNode = null;
+            document.getElementById('properties-panel').classList.remove('active');
+        }
+
+        function showProperties(node) {
+            const panel = document.getElementById('properties-panel');
+            panel.classList.add('active');
+            
+            // Llenar campos generales
+            document.getElementById('node-id').value = node.id;
+            document.getElementById('node-name').value = node.data.title || '';
+            
+            // Ocultar todas las secciones específicas
+            document.querySelectorAll('[id$="-properties"]').forEach(section => {
+                section.style.display = 'none';
+            });
+            
+            // Mostrar sección específica según el tipo
+            switch(node.type) {
+                case 'message':
+                    document.getElementById('message-properties').style.display = 'block';
+                    document.getElementById('message-text').value = node.data.text || '';
+                    break;
+                case 'menu':
+                    document.getElementById('menu-properties').style.display = 'block';
+                    renderMenuOptions(node.data.options);
+                    break;
+                case 'condition':
+                    document.getElementById('condition-properties').style.display = 'block';
+                    document.getElementById('condition-variable').value = node.data.variable || '';
+                    document.getElementById('condition-operator').value = node.data.operator || 'equals';
+                    document.getElementById('condition-value').value = node.data.value || '';
+                    break;
+            }
+        }
+
+        function renderMenuOptions(options) {
+            const container = document.getElementById('menu-options-container');
+            container.innerHTML = '';
+            
+            options.forEach((option, index) => {
+                const optionEl = document.createElement('div');
+                optionEl.className = 'property-field';
+                optionEl.innerHTML = `
+                    <label>Opción ${index + 1}</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" value="${option.text}" 
+                               onchange="updateMenuOption(${index}, this.value)">
+                        <button class="btn btn-outline-danger btn-sm" onclick="removeMenuOption(${index})">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                container.appendChild(optionEl);
+            });
+        }
+
+        function updateMenuOption(index, value) {
+            if (selectedNode && selectedNode.type === 'menu') {
+                selectedNode.data.options[index].text = value;
+                updateNodeDisplay(selectedNode);
+            }
+        }
+
+        function addMenuOption() {
+            if (selectedNode && selectedNode.type === 'menu') {
+                selectedNode.data.options.push({ text: 'Nueva opción', next: null });
+                renderMenuOptions(selectedNode.data.options);
+                updateNodeDisplay(selectedNode);
+            }
+        }
+
+        function removeMenuOption(index) {
+            if (selectedNode && selectedNode.type === 'menu') {
+                selectedNode.data.options.splice(index, 1);
+                renderMenuOptions(selectedNode.data.options);
+                updateNodeDisplay(selectedNode);
+            }
+        }
+
+        function updateNodeDisplay(node) {
+            const nodeEl = document.getElementById(node.id);
+            if (nodeEl) {
+                // Recrear el nodo con los datos actualizados
+                nodeEl.remove();
+                renderNode(node);
+            }
+        }
+
+        function editNode(nodeId) {
+            selectNode(nodeId);
+        }
+
+        function deleteNode(nodeId) {
+            const nodeEl = document.getElementById(nodeId);
+            if (nodeEl) {
+                nodeEl.remove();
+            }
+            
+            // Eliminar del array
+            nodes = nodes.filter(n => n.id !== nodeId);
+            
+            // Eliminar conexiones relacionadas
+            connections = connections.filter(c => c.from !== nodeId && c.to !== nodeId);
+            updateConnections();
+            
+            deselectAll();
+        }
+
+        function deleteSelectedNode() {
+            if (selectedNode) {
+                deleteNode(selectedNode.id);
+            }
+        }
+
+        function startConnection(nodeId, type) {
+            connectionStart = { nodeId, type };
+            // Visual feedback
+            document.getElementById(nodeId).classList.add('connecting');
+        }
+
+        function endConnection(nodeId, type) {
+            if (connectionStart && connectionStart.nodeId !== nodeId) {
+                connections.push({
+                    from: connectionStart.nodeId,
+                    to: nodeId
+                });
+                updateConnections();
+            }
+            
+            // Limpiar estado
+            document.querySelectorAll('.connecting').forEach(n => n.classList.remove('connecting'));
+            connectionStart = null;
+        }
+
+        function updateConnections() {
+            const svg = document.querySelector('.connections-svg');
+            // Limpiar conexiones existentes
+            svg.querySelectorAll('.connection-line').forEach(line => line.remove());
+            
+            connections.forEach(conn => {
+                const fromNode = document.getElementById(conn.from);
+                const toNode = document.getElementById(conn.to);
+                
+                if (fromNode && toNode) {
+                    const fromRect = fromNode.getBoundingClientRect();
+                    const toRect = toNode.getBoundingClientRect();
+                    const canvasRect = svg.getBoundingClientRect();
+                    
+                    const x1 = fromRect.right - canvasRect.left;
+                    const y1 = fromRect.top + fromRect.height/2 - canvasRect.top;
+                    const x2 = toRect.left - canvasRect.left;
+                    const y2 = toRect.top + toRect.height/2 - canvasRect.top;
+                    
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    const midX = (x1 + x2) / 2;
+                    
+                    // Crear una curva bezier para conexión más suave
+                    const d = `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
+                    path.setAttribute('d', d);
+                    path.setAttribute('class', 'connection-line');
+                    
+                    svg.appendChild(path);
+                }
+            });
+        }
+
+        function clearCanvas() {
+            if (confirm('¿Estás seguro de que quieres limpiar todo el flujo?')) {
+                document.querySelectorAll('.flow-node').forEach(node => node.remove());
+                nodes = [];
+                connections = [];
+                nodeIdCounter = 1;
+                deselectAll();
+                updateConnections();
+            }
+        }
+
+        function autoArrange() {
+            // Algoritmo simple de auto-organización
+            const startNodes = nodes.filter(n => n.type === 'start');
+            const layers = [];
+            const visited = new Set();
+            
+            // BFS para organizar en capas
+            if (startNodes.length > 0) {
+                let currentLayer = startNodes;
+                let layerIndex = 0;
+                
+                while (currentLayer.length > 0) {
+                    layers[layerIndex] = currentLayer;
+                    currentLayer.forEach(n => visited.add(n.id));
+                    
+                    const nextLayer = [];
+                    currentLayer.forEach(node => {
+                        const connectedNodes = connections
+                            .filter(c => c.from === node.id)
+                            .map(c => nodes.find(n => n.id === c.to))
+                            .filter(n => n && !visited.has(n.id));
+                        
+                        nextLayer.push(...connectedNodes);
+                    });
+                    
+                    currentLayer = [...new Set(nextLayer)];
+                    layerIndex++;
+                }
+            }
+            
+            // Posicionar nodos
+            const startX = 100;
+            const startY = 100;
+            const horizontalSpacing = 250;
+            const verticalSpacing = 150;
+            
+            layers.forEach((layer, layerIndex) => {
+                layer.forEach((node, nodeIndex) => {
+                    node.x = startX + layerIndex * horizontalSpacing;
+                    node.y = startY + nodeIndex * verticalSpacing;
+                    
+                    const nodeEl = document.getElementById(node.id);
+                    if (nodeEl) {
+                        nodeEl.style.left = `${node.x}px`;
+                        nodeEl.style.top = `${node.y}px`;
+                    }
+                });
+            });
+            
+            updateConnections();
+        }
+
+        function zoomIn() {
+            zoomLevel = Math.min(zoomLevel + 0.1, 2);
+            applyZoom();
+        }
+
+        function zoomOut() {
+            zoomLevel = Math.max(zoomLevel - 0.1, 0.5);
+            applyZoom();
+        }
+
+        function zoomReset() {
+            zoomLevel = 1;
+            applyZoom();
+        }
+
+        function applyZoom() {
+            const canvas = document.getElementById('flow-canvas');
+            canvas.style.transform = `scale(${zoomLevel})`;
+            canvas.style.transformOrigin = 'center center';
+            document.querySelector('.zoom-level').textContent = `${Math.round(zoomLevel * 100)}%`;
+        }
+
+        function saveFlow() {
+            const flowData = {
+                nodes: nodes,
+                connections: connections,
+                metadata: {
+                    name: 'Flujo BSL Bot',
+                    version: '1.0',
+                    createdAt: new Date().toISOString(),
+                    lastModified: new Date().toISOString()
+                }
+            };
+            
+            // Guardar en backend
+            fetch('/api/flow/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(flowData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification('Flujo guardado exitosamente', 'success');
+                } else {
+                    showNotification('Error al guardar el flujo', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showNotification('Error al guardar el flujo', 'error');
+            });
+        }
+
+        function loadFlow() {
+            fetch('/api/flow/load')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.flow) {
+                        clearCanvas();
+                        nodes = data.flow.nodes || [];
+                        connections = data.flow.connections || [];
+                        
+                        // Renderizar todos los nodos
+                        nodes.forEach(node => renderNode(node));
+                        
+                        // Actualizar conexiones
+                        setTimeout(() => updateConnections(), 100);
+                        
+                        showNotification('Flujo cargado exitosamente', 'success');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showNotification('Error al cargar el flujo', 'error');
+                });
+        }
+
+        function exportFlow() {
+            const flowData = {
+                nodes: nodes,
+                connections: connections,
+                metadata: {
+                    exportedAt: new Date().toISOString()
+                }
+            };
+            
+            const blob = new Blob([JSON.stringify(flowData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `bsl-bot-flow-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            showNotification('Flujo exportado exitosamente', 'success');
+        }
+
+        function testFlow() {
+            const modal = new bootstrap.Modal(document.getElementById('testModal'));
+            modal.show();
+            
+            // Inicializar simulación de chat
+            initChatSimulation();
+        }
+
+        function initChatSimulation() {
+            const chatContainer = document.querySelector('.chat-container');
+            chatContainer.innerHTML = `
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> Simulación del flujo iniciada. 
+                    Escribe mensajes para probar el comportamiento.
+                </div>
+            `;
+        }
+
+        function deployFlow() {
+            if (confirm('¿Estás seguro de que quieres aplicar estos cambios al bot en producción?')) {
+                const flowData = {
+                    nodes: nodes,
+                    connections: connections,
+                    deployedBy: 'admin',
+                    deployedAt: new Date().toISOString()
+                };
+                
+                fetch('/api/flow/deploy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(flowData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showNotification('Flujo aplicado exitosamente al bot', 'success');
+                    } else {
+                        showNotification('Error al aplicar el flujo', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showNotification('Error al aplicar el flujo', 'error');
+                });
+            }
+        }
+
+        function loadExistingFlow() {
+            // Cargar flujo existente al iniciar
+            loadFlow();
+        }
+
+        function showNotification(message, type) {
+            // Crear notificación temporal
+            const notification = document.createElement('div');
+            notification.className = `alert alert-${type === 'success' ? 'success' : 'danger'} position-fixed top-0 end-0 m-3`;
+            notification.style.zIndex = '9999';
+            notification.innerHTML = `
+                <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i> ${message}
+            `;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
+        // Guardar automáticamente cada 30 segundos
+        setInterval(() => {
+            if (nodes.length > 0) {
+                saveFlow();
+            }
+        }, 30000);
+
+        // Listener para cambios en propiedades
+        document.getElementById('node-name').addEventListener('change', function() {
+            if (selectedNode) {
+                selectedNode.data.title = this.value;
+                updateNodeDisplay(selectedNode);
+            }
+        });
+
+        document.getElementById('message-text').addEventListener('change', function() {
+            if (selectedNode && selectedNode.type === 'message') {
+                selectedNode.data.text = this.value;
+                updateNodeDisplay(selectedNode);
+            }
+        });
+
+        document.getElementById('condition-variable').addEventListener('change', function() {
+            if (selectedNode && selectedNode.type === 'condition') {
+                selectedNode.data.variable = this.value;
+                updateNodeDisplay(selectedNode);
+            }
+        });
+
+        document.getElementById('condition-operator').addEventListener('change', function() {
+            if (selectedNode && selectedNode.type === 'condition') {
+                selectedNode.data.operator = this.value;
+                updateNodeDisplay(selectedNode);
+            }
+        });
+
+        document.getElementById('condition-value').addEventListener('change', function() {
+            if (selectedNode && selectedNode.type === 'condition') {
+                selectedNode.data.value = this.value;
+                updateNodeDisplay(selectedNode);
+            }
+        });
+    </script>
+</body>
+</html>

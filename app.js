@@ -167,7 +167,12 @@ app.post('/soporte', async (req, res) => {
 
 // Root route - redirect to admin panel
 app.get('/', (req, res) => {
-    res.redirect('/dashboard.html');
+    res.redirect('/admin-dashboard.html');
+});
+
+// Admin panel route
+app.get('/admin', (req, res) => {
+    res.redirect('/admin-dashboard.html');
 });
 
 // Health check endpoints
@@ -182,6 +187,10 @@ app.use('/api/metrics', metricsRouter);
 // Admin routes
 const adminRouter = require('./routes/admin');
 app.use('/api/admin', adminRouter);
+
+// Flow Editor routes
+const flowEditorRouter = require('./routes/flowEditor');
+app.use('/', flowEditorRouter);
 
 app.post('/api/guardarMensaje', async (req, res) => {
     try {
