@@ -162,7 +162,7 @@ router.post('/bulk/stopbot', async (req, res) => {
                     UPDATE conversaciones 
                     SET observaciones = $1, updated_at = CURRENT_TIMESTAMP 
                     WHERE user_id = $2
-                `, [`stop - ${reason || 'Carga masiva'}`, cleanNumber]);
+                `, ['stop', cleanNumber]);  // Solo 'stop' para consistencia
                 
                 if (updateResult.rowCount > 0) {
                     results.updated++;
@@ -179,7 +179,7 @@ router.post('/bulk/stopbot', async (req, res) => {
                         cleanNumber,
                         'Usuario bloqueado',
                         JSON.stringify([]),
-                        `stop - ${reason || 'Carga masiva'}`,
+                        'stop',  // Solo 'stop' para que coincida con las búsquedas
                         'inicial'
                     ]);
                     results.created++;
