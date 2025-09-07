@@ -116,10 +116,10 @@ function getDefaultFlow() {
     return {
         nodes: [
             {
-                id: 'node-1',
+                id: 'node-start',
                 type: 'start',
                 x: 50,
-                y: 200,
+                y: 300,
                 data: {
                     title: 'Inicio',
                     icon: 'fa-play-circle',
@@ -128,22 +128,22 @@ function getDefaultFlow() {
                 }
             },
             {
-                id: 'node-2',
+                id: 'node-greeting',
                 type: 'message',
-                x: 250,
-                y: 200,
+                x: 200,
+                y: 300,
                 data: {
                     title: 'Saludo Inicial',
-                    text: '¿En qué puedo ayudarte hoy?',
+                    text: 'Hola, ¿en qué puedo ayudarte hoy?',
                     icon: 'fa-comment',
                     color: 'primary'
                 }
             },
             {
-                id: 'node-3',
+                id: 'node-ai-response',
                 type: 'ai',
-                x: 450,
-                y: 100,
+                x: 400,
+                y: 200,
                 data: {
                     title: 'Respuesta IA (Fase Inicial)',
                     prompt: 'promptInstitucional',
@@ -152,12 +152,24 @@ function getDefaultFlow() {
                 }
             },
             {
-                id: 'node-4',
-                type: 'condition',
-                x: 650,
-                y: 200,
+                id: 'node-image-process',
+                type: 'image',
+                x: 400,
+                y: 400,
                 data: {
-                    title: 'Usuario Agenda?',
+                    title: 'Procesar Imagen',
+                    action: 'classify',
+                    icon: 'fa-image',
+                    color: 'info'
+                }
+            },
+            {
+                id: 'node-check-schedule',
+                type: 'condition',
+                x: 600,
+                y: 300,
+                data: {
+                    title: '¿Usuario Agendó?',
                     variable: 'response',
                     operator: 'contains',
                     value: 'nuevaorden-1',
@@ -166,17 +178,17 @@ function getDefaultFlow() {
                 }
             },
             {
-                id: 'node-5',
+                id: 'node-post-schedule-menu',
                 type: 'menu',
-                x: 850,
-                y: 100,
+                x: 800,
+                y: 200,
                 data: {
                     title: 'Menú Post-Agendamiento',
                     options: [
-                        { text: '¿A qué hora quedó mi cita?', next: 'node-10' },
-                        { text: 'Problemas con la aplicación', next: 'node-11' },
-                        { text: 'No me funciona el formulario', next: 'node-12' },
-                        { text: 'Se me cerró la aplicación', next: 'node-13' },
+                        { text: '¿A qué hora quedó mi cita?', next: null },
+                        { text: 'Problemas con la aplicación', next: null },
+                        { text: 'No me funciona el formulario', next: null },
+                        { text: 'Se me cerró la aplicación', next: null },
                         { text: 'Hablar con un asesor', next: 'node-transfer' }
                     ],
                     icon: 'fa-list',
@@ -184,12 +196,12 @@ function getDefaultFlow() {
                 }
             },
             {
-                id: 'node-6',
+                id: 'node-check-review',
                 type: 'condition',
-                x: 850,
-                y: 300,
+                x: 800,
+                y: 400,
                 data: {
-                    title: 'Admin: Revisa Certificado?',
+                    title: '¿Admin: Revisar Certificado?',
                     variable: 'adminMessage',
                     operator: 'contains',
                     value: 'revisa que todo esté en orden',
@@ -198,16 +210,16 @@ function getDefaultFlow() {
                 }
             },
             {
-                id: 'node-7',
+                id: 'node-review-menu',
                 type: 'menu',
-                x: 1050,
-                y: 300,
+                x: 1000,
+                y: 400,
                 data: {
                     title: 'Revisión Certificado',
                     options: [
                         { text: 'Sí, está correcto', next: 'node-payment' },
                         { text: 'Hay un error que corregir', next: 'node-transfer' },
-                        { text: 'No he podido revisarlo', next: 'node-help' },
+                        { text: 'No he podido revisarlo', next: null },
                         { text: 'Hablar con un asesor', next: 'node-transfer' }
                     ],
                     icon: 'fa-list',
@@ -217,8 +229,8 @@ function getDefaultFlow() {
             {
                 id: 'node-payment',
                 type: 'payment',
-                x: 1250,
-                y: 250,
+                x: 1200,
+                y: 300,
                 data: {
                     title: 'Procesar Pago',
                     icon: 'fa-credit-card',
@@ -228,8 +240,8 @@ function getDefaultFlow() {
             {
                 id: 'node-pdf',
                 type: 'pdf',
-                x: 1450,
-                y: 250,
+                x: 1400,
+                y: 300,
                 data: {
                     title: 'Generar Certificado PDF',
                     template: 'certificate',
@@ -240,8 +252,8 @@ function getDefaultFlow() {
             {
                 id: 'node-transfer',
                 type: 'transfer',
-                x: 1050,
-                y: 450,
+                x: 1000,
+                y: 550,
                 data: {
                     title: 'Transferir a Asesor',
                     message: '...transfiriendo con asesor',
@@ -252,40 +264,29 @@ function getDefaultFlow() {
             {
                 id: 'node-end',
                 type: 'end',
-                x: 1650,
-                y: 250,
+                x: 1600,
+                y: 300,
                 data: {
                     title: 'Fin',
                     icon: 'fa-stop-circle',
                     color: 'danger'
                 }
-            },
-            {
-                id: 'node-image',
-                type: 'image',
-                x: 450,
-                y: 350,
-                data: {
-                    title: 'Procesar Imagen',
-                    action: 'classify',
-                    icon: 'fa-image',
-                    color: 'info'
-                }
             }
         ],
         connections: [
-            { from: 'node-1', to: 'node-2' },
-            { from: 'node-2', to: 'node-3' },
-            { from: 'node-3', to: 'node-4' },
-            { from: 'node-4', to: 'node-5' },
-            { from: 'node-4', to: 'node-6' },
-            { from: 'node-6', to: 'node-7' },
-            { from: 'node-7', to: 'node-payment' },
+            { from: 'node-start', to: 'node-greeting' },
+            { from: 'node-greeting', to: 'node-ai-response' },
+            { from: 'node-greeting', to: 'node-image-process' },
+            { from: 'node-ai-response', to: 'node-check-schedule' },
+            { from: 'node-image-process', to: 'node-check-schedule' },
+            { from: 'node-check-schedule', to: 'node-post-schedule-menu' },
+            { from: 'node-check-schedule', to: 'node-check-review' },
+            { from: 'node-check-review', to: 'node-review-menu' },
+            { from: 'node-review-menu', to: 'node-payment' },
             { from: 'node-payment', to: 'node-pdf' },
             { from: 'node-pdf', to: 'node-end' },
-            { from: 'node-transfer', to: 'node-end' },
-            { from: 'node-2', to: 'node-image' },
-            { from: 'node-image', to: 'node-4' }
+            { from: 'node-post-schedule-menu', to: 'node-transfer' },
+            { from: 'node-transfer', to: 'node-end' }
         ],
         metadata: {
             name: 'Flujo BSL Bot - Por Defecto',

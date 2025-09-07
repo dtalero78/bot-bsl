@@ -1090,55 +1090,148 @@
         }
 
         function autoArrange() {
-            // Algoritmo simple de auto-organización
+            // Algoritmo mejorado de auto-organización con diseño jerárquico
             const startNodes = nodes.filter(n => n.type === 'start');
-            const layers = [];
-            const visited = new Set();
-            
-            // BFS para organizar en capas
-            if (startNodes.length > 0) {
-                let currentLayer = startNodes;
-                let layerIndex = 0;
-                
-                while (currentLayer.length > 0) {
-                    layers[layerIndex] = currentLayer;
-                    currentLayer.forEach(n => visited.add(n.id));
-                    
-                    const nextLayer = [];
-                    currentLayer.forEach(node => {
-                        const connectedNodes = connections
-                            .filter(c => c.from === node.id)
-                            .map(c => nodes.find(n => n.id === c.to))
-                            .filter(n => n && !visited.has(n.id));
-                        
-                        nextLayer.push(...connectedNodes);
-                    });
-                    
-                    currentLayer = [...new Set(nextLayer)];
-                    layerIndex++;
-                }
+            if (startNodes.length === 0 && nodes.length > 0) {
+                // Si no hay nodo de inicio, usar el primero
+                startNodes.push(nodes[0]);
             }
             
-            // Posicionar nodos
-            const startX = 100;
-            const startY = 100;
-            const horizontalSpacing = 250;
-            const verticalSpacing = 150;
+            const nodeMap = new Map();
+            const levels = new Map();
+            const visited = new Set();
             
-            layers.forEach((layer, layerIndex) => {
-                layer.forEach((node, nodeIndex) => {
-                    node.x = startX + layerIndex * horizontalSpacing;
-                    node.y = startY + nodeIndex * verticalSpacing;
+            // Función para calcular el nivel de cada nodo
+            function calculateLevels(node, level = 0) {
+                if (visited.has(node.id)) return;
+                visited.add(node.id);
+                
+                if (!levels.has(level)) {
+                    levels.set(level, []);
+                }
+                
+                // Solo agregar si no está ya en un nivel anterior
+                const existingLevel = Array.from(levels.entries()).find(([l, nodes]) => 
+                    nodes.some(n => n.id === node.id)
+                );
+                
+                if (!existingLevel || existingLevel[0] > level) {
+                    if (existingLevel) {
+                        // Remover del nivel anterior
+                        const idx = existingLevel[1].findIndex(n => n.id === node.id);
+                        if (idx !== -1) existingLevel[1].splice(idx, 1);
+                    }
+                    levels.get(level).push(node);
+                }
+                
+                // Procesar nodos conectados
+                const connectedNodes = connections
+                    .filter(c => c.from === node.id)
+                    .map(c => nodes.find(n => n.id === c.to))
+                    .filter(n => n);
+                
+                connectedNodes.forEach(n => calculateLevels(n, level + 1));
+            }
+            
+            // Calcular niveles desde cada nodo de inicio
+            startNodes.forEach(node => calculateLevels(node, 0));
+            
+            // Agregar nodos no conectados al final
+            nodes.forEach(node => {
+                if (!visited.has(node.id)) {
+                    const maxLevel = Math.max(...levels.keys());
+                    if (!levels.has(maxLevel + 1)) {
+                        levels.set(maxLevel + 1, []);
+                    }
+                    levels.get(maxLevel + 1).push(node);
+                }
+            });
+            
+            // Configuración de espaciado mejorada
+            const canvas = document.getElementById('flow-canvas');
+            const canvasRect = canvas.getBoundingClientRect();
+            const startX = 100;
+            const horizontalSpacing = 300; // Más espacio horizontal
+            const baseY = canvasRect.height / 2; // Centrar verticalmente
+            
+            // Posicionar nodos por niveles
+            levels.forEach((nodesInLevel, level) => {
+                const verticalSpacing = Math.min(150, (canvasRect.height - 200) / Math.max(1, nodesInLevel.length - 1));
+                const totalHeight = (nodesInLevel.length - 1) * verticalSpacing;
+                const startY = baseY - totalHeight / 2;
+                
+                // Ordenar nodos por tipo para mejor organización visual
+                nodesInLevel.sort((a, b) => {
+                    const typeOrder = {
+                        'start': 0,
+                        'message': 1,
+                        'ai': 2,
+                        'condition': 3,
+                        'menu': 4,
+                        'input': 5,
+                        'image': 6,
+                        'payment': 7,
+                        'pdf': 8,
+                        'transfer': 9,
+                        'end': 10
+                    };
+                    return (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99);
+                });
+                
+                nodesInLevel.forEach((node, index) => {
+                    // Posición base
+                    let x = startX + level * horizontalSpacing;
+                    let y = startY + index * verticalSpacing;
+                    
+                    // Ajustes especiales para nodos de condición (rombo)
+                    if (node.type === 'condition') {
+                        x += 30; // Desplazar ligeramente para mejor visualización
+                    }
+                    
+                    // Evitar superposición con nodos existentes
+                    let attempts = 0;
+                    while (attempts < 10) {
+                        const overlap = nodes.some(n => 
+                            n.id !== node.id &&
+                            Math.abs(n.x - x) < 100 &&
+                            Math.abs(n.y - y) < 80
+                        );
+                        
+                        if (!overlap) break;
+                        
+                        y += 30; // Desplazar hacia abajo si hay superposición
+                        attempts++;
+                    }
+                    
+                    // Actualizar posición del nodo
+                    node.x = x;
+                    node.y = y;
                     
                     const nodeEl = document.getElementById(node.id);
                     if (nodeEl) {
-                        nodeEl.style.left = `${node.x}px`;
-                        nodeEl.style.top = `${node.y}px`;
+                        nodeEl.style.left = `${x}px`;
+                        nodeEl.style.top = `${y}px`;
+                        
+                        // Animación suave
+                        nodeEl.style.transition = 'all 0.5s ease';
+                        setTimeout(() => {
+                            nodeEl.style.transition = '';
+                        }, 500);
                     }
                 });
             });
             
-            updateConnections();
+            // Actualizar conexiones después de reorganizar
+            setTimeout(() => {
+                updateConnections();
+            }, 100);
+            
+            // Ajustar zoom si es necesario
+            const maxX = Math.max(...nodes.map(n => n.x));
+            if (maxX > canvasRect.width - 200) {
+                zoomLevel = Math.max(0.5, (canvasRect.width - 200) / maxX);
+                applyZoom();
+            }
         }
 
         function zoomIn() {
