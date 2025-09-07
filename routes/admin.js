@@ -5,6 +5,7 @@ const { getCacheService } = require('../services/cacheService');
 const { getQueueService } = require('../services/queueService');
 const logger = require('../utils/logger');
 const { extraerUserId } = require('../utils/shared');
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
 /**
  * Middleware de autenticación básica para administración
@@ -438,6 +439,55 @@ router.post('/fix-blocked-users', async (req, res) => {
         res.status(500).json({ 
             success: false, 
             error: 'Error corrigiendo usuarios bloqueados' 
+        });
+    }
+});
+
+/**
+ * Test WhatsApp message sending
+ */
+router.post('/test-whatsapp', async (req, res) => {
+    try {
+        const { to, message } = req.body;
+        
+        if (!to || !message) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Número (to) y mensaje son requeridos' 
+            });
+        }
+        
+        // Intentar enviar mensaje por WhatsApp
+        const url = "https://gate.whapi.cloud/messages/text";
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${process.env.WHAPI_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                to: to.includes('@') ? to : `${to}@s.whatsapp.net`,
+                body: message 
+            })
+        });
+        
+        const result = await response.json();
+        
+        logger.info('AdminRoute', 'WhatsApp test message', { to, status: response.status });
+        
+        res.json({
+            success: response.ok,
+            status: response.status,
+            result: result,
+            message: response.ok ? 'Mensaje enviado' : 'Error al enviar',
+            whapi_configured: !!process.env.WHAPI_KEY
+        });
+        
+    } catch (error) {
+        logger.error('AdminRoute', 'Error testing WhatsApp', { error });
+        res.status(500).json({ 
+            success: false, 
+            error: error.message 
         });
     }
 });
