@@ -6,6 +6,9 @@
   "type": "commonjs",
   "scripts": {
     "start": "node app.js",
+    "dev": "concurrently \"npm run start\" \"npm run frontend:dev\"",
+    "frontend:dev": "cd frontend && npm run dev",
+    "frontend:build": "cd frontend && npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -22,5 +25,9 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "shadcn": "^3.2.1"
   }
 }
