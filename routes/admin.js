@@ -398,6 +398,105 @@ router.get('/conversations/:userId', async (req, res) => {
 });
 
 /**
+ * Obtener todos los usuarios bloqueados
+ */
+router.get('/blocked-users', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 100;
+        
+        const result = await pool.query(`
+            SELECT user_id, nombre, observaciones, updated_at, created_at
+            FROM conversaciones
+            WHERE observaciones = 'stop'
+            ORDER BY updated_at DESC
+            LIMIT $1
+        `, [limit]);
+        
+        res.json({
+            success: true,
+            users: result.rows,
+            total: result.rows.length
+        });
+        
+    } catch (error) {
+        logger.error('AdminRoute', 'Error getting blocked users', { error });
+        res.status(500).json({ success: false, error: 'Error retrieving blocked users' });
+    }
+});
+
+/**
+ * Buscar usuarios bloqueados por número o nombre
+ */
+router.get('/blocked-users/search', async (req, res) => {
+    try {
+        const searchTerm = req.query.q;
+        
+        if (!searchTerm) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Search term is required' 
+            });
+        }
+        
+        const result = await pool.query(`
+            SELECT user_id, nombre, observaciones, updated_at, created_at
+            FROM conversaciones
+            WHERE observaciones = 'stop'
+            AND (user_id ILIKE $1 OR nombre ILIKE $1)
+            ORDER BY updated_at DESC
+            LIMIT 50
+        `, [`%${searchTerm}%`]);
+        
+        res.json({
+            success: true,
+            users: result.rows,
+            searchTerm: searchTerm
+        });
+        
+    } catch (error) {
+        logger.error('AdminRoute', 'Error searching blocked users', { error });
+        res.status(500).json({ success: false, error: 'Error searching blocked users' });
+    }
+});
+
+/**
+ * Desbloquear un usuario específico
+ */
+router.post('/unblock/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        // Actualizar observaciones para quitar el bloqueo
+        const result = await pool.query(`
+            UPDATE conversaciones
+            SET observaciones = '', 
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = $1
+            RETURNING user_id, nombre
+        `, [userId]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'User not found' 
+            });
+        }
+        
+        logger.info('AdminRoute', 'User unblocked', { userId });
+        
+        res.json({
+            success: true,
+            message: `User ${userId} unblocked successfully`,
+            user: result.rows[0]
+        });
+        
+    } catch (error) {
+        logger.error('AdminRoute', 'Error unblocking user', { error });
+        res.status(500).json({ success: false, error: 'Error unblocking user' });
+    }
+});
+
+/**
  * Actualizar observaciones de un usuario (STOP/START)
  */
 router.put('/conversations/:userId/observations', async (req, res) => {

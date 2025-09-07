@@ -249,6 +249,47 @@
             </div>
         </div>
         
+        <!-- Sección de búsqueda y gestión de usuarios bloqueados -->
+        <div class="conversations-section">
+            <div class="conversations-header">
+                <h2>🔍 Buscar y Gestionar Usuarios Bloqueados</h2>
+                <p>Buscar usuarios bloqueados y desbloquearlos manualmente</p>
+            </div>
+            
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                <div class="row">
+                    <div class="col-md-6">
+                        <label style="font-weight: bold; margin-bottom: 8px;">Buscar por número o nombre:</label>
+                        <input 
+                            type="text" 
+                            id="searchBlockedUser" 
+                            placeholder="Ej: 573001234567 o nombre del usuario"
+                            style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                    <div class="col-md-3">
+                        <label style="visibility: hidden;">Buscar</label>
+                        <button 
+                            onclick="searchBlockedUsers()" 
+                            style="width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            🔍 Buscar
+                        </button>
+                    </div>
+                    <div class="col-md-3">
+                        <label style="visibility: hidden;">Ver todos</label>
+                        <button 
+                            onclick="loadAllBlockedUsers()" 
+                            style="width: 100%; padding: 10px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            📋 Ver Todos los Bloqueados
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="blockedUsersResults" style="margin-top: 20px; max-height: 400px; overflow-y: auto;">
+                    <!-- Los resultados aparecerán aquí -->
+                </div>
+            </div>
+        </div>
+        
         <!-- Sección de carga masiva de StopBot -->
         <div class="conversations-section">
             <div class="conversations-header">
@@ -632,6 +673,125 @@
             }
             
             console.log('=== FIN BULK STOPBOT ===');
+        }
+        
+        // Funciones para buscar y gestionar usuarios bloqueados
+        async function searchBlockedUsers() {
+            const searchTerm = document.getElementById('searchBlockedUser').value.trim();
+            if (!searchTerm) {
+                alert('Por favor ingresa un número o nombre para buscar');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/admin/blocked-users/search?q=${encodeURIComponent(searchTerm)}`, {
+                    headers: {
+                        'Authorization': `Bearer ${API_TOKEN}`
+                    }
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    displayBlockedUsers(data.users);
+                } else {
+                    alert('Error al buscar usuarios: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error buscando usuarios:', error);
+                alert('Error al buscar usuarios');
+            }
+        }
+        
+        async function loadAllBlockedUsers() {
+            try {
+                const response = await fetch('/api/admin/blocked-users', {
+                    headers: {
+                        'Authorization': `Bearer ${API_TOKEN}`
+                    }
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    displayBlockedUsers(data.users);
+                } else {
+                    alert('Error al cargar usuarios bloqueados: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error cargando usuarios bloqueados:', error);
+                alert('Error al cargar usuarios bloqueados');
+            }
+        }
+        
+        function displayBlockedUsers(users) {
+            const resultsDiv = document.getElementById('blockedUsersResults');
+            
+            if (!users || users.length === 0) {
+                resultsDiv.innerHTML = '<p style="color: #6c757d;">No se encontraron usuarios bloqueados</p>';
+                return;
+            }
+            
+            let html = `
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #e9ecef;">
+                            <th style="padding: 10px; text-align: left;">Número</th>
+                            <th style="padding: 10px; text-align: left;">Nombre</th>
+                            <th style="padding: 10px; text-align: left;">Fecha Bloqueo</th>
+                            <th style="padding: 10px; text-align: center;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            users.forEach(user => {
+                html += `
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                        <td style="padding: 10px;">${user.user_id}</td>
+                        <td style="padding: 10px;">${user.nombre || 'Sin nombre'}</td>
+                        <td style="padding: 10px;">${new Date(user.updated_at).toLocaleString()}</td>
+                        <td style="padding: 10px; text-align: center;">
+                            <button 
+                                onclick="unblockUser('${user.user_id}')" 
+                                style="padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                ✅ Desbloquear
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table>';
+            resultsDiv.innerHTML = html;
+        }
+        
+        async function unblockUser(userId) {
+            if (!confirm(`¿Estás seguro de que quieres desbloquear a ${userId}?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/admin/unblock/${userId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${API_TOKEN}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert(`Usuario ${userId} desbloqueado exitosamente`);
+                    // Recargar la lista
+                    searchBlockedUsers();
+                    // Actualizar el dashboard
+                    loadDashboard();
+                } else {
+                    alert('Error al desbloquear usuario: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error desbloqueando usuario:', error);
+                alert('Error al desbloquear usuario');
+            }
         }
     </script>
 </body>
