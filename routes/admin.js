@@ -286,7 +286,7 @@ router.get('/dashboard', async (req, res) => {
 });
 
 /**
- * Listar conversaciones con filtros y paginación
+ * Listar conversaciones con filtros y paginación (version simplificada)
  */
 router.get('/conversations', async (req, res) => {
     try {

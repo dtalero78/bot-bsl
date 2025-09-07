@@ -275,7 +275,7 @@
                             style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 15px;">
                         
                         <button 
-                            onclick="bulkStopBot()" 
+                            onclick="submitBulkStopBot()" 
                             style="width: 100%; padding: 12px; background: #dc3545; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;"
                             onmouseover="this.style.background='#c82333'" 
                             onmouseout="this.style.background='#dc3545'">
@@ -469,6 +469,71 @@
         
         // Initial load
         loadData();
+        
+        // Función para carga masiva de StopBot
+        async function submitBulkStopBot() {
+            const numbersText = document.getElementById('bulkNumbers').value.trim();
+            const reason = document.getElementById('stopReason').value.trim() || 'Carga masiva';
+            
+            if (!numbersText) {
+                alert('Debe ingresar al menos un número');
+                return;
+            }
+            
+            // Parsear números (separados por líneas, comas, espacios)
+            const numbers = numbersText
+                .split(/[\n,\s]+/)
+                .map(n => n.trim())
+                .filter(n => n.length > 0);
+                
+            if (numbers.length === 0) {
+                alert('No se encontraron números válidos');
+                return;
+            }
+            
+            if (!confirm(`¿Está seguro de marcar ${numbers.length} números como stopBot?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/bulk/stopbot', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${API_TOKEN}`
+                    },
+                    body: JSON.stringify({
+                        numbers: numbers,
+                        reason: reason
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`Éxito: ${data.message}`);
+                    document.getElementById('bulkNumbers').value = '';
+                    document.getElementById('stopReason').value = '';
+                    
+                    // Recargar datos
+                    loadData();
+                    
+                    // Mostrar detalles si hay errores
+                    if (data.results.errors.length > 0) {
+                        console.log('Errores encontrados:', data.results.errors);
+                        alert(`Procesado con ${data.results.errors.length} errores. Ver consola para detalles.`);
+                    }
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
     </script>
 </body>
 </html>
