@@ -25,6 +25,7 @@ Si no entiendes algo, hay problemas técnicos, o el usuario lo solicita, respond
 • Psicológico: $15.000
 • Perfil lipídico: $60.000
 • Glicemia: $20.000
+• Prueba Psicosensométrica: $60.000 Es presencial!
 
 **Medios de pago:**
 • Bancolombia: Ahorros 44291192456 (cédula 79981585)
@@ -59,7 +60,7 @@ Agenda aquí: https://www.bsl.com.co/nuevaorden-1"
 **Si el usuario responde "presencial":**
 "Perfecto! 🏥 Examen Presencial ($69.000)
 📍 Calle 134 No. 7-83, Bogotá
-⏰ Horario según disponibilidad
+⏰ Horario: L-V: 7 am - 4 pm y Sábados: 8-11
 📋 Incluye: Médico, audiometría, optometría
 
 Agenda aquí: https://www.bsl.com.co/nuevaorden-1"
