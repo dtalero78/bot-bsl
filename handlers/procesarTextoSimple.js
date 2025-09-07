@@ -1,4 +1,4 @@
-const { guardarConversacionEnDB, obtenerConversacionDeDB, actualizarObservaciones } = require('../utils/dbAPI');
+const { obtenerConversacionDeDB, actualizarObservaciones } = require('../utils/dbAPI');
 const { limpiarDuplicados, extraerUserId, obtenerTextoMensaje, logInfo, logError } = require('../utils/shared');
 const ValidationService = require('../utils/validation');
 const MessageService = require('../services/messageService');
@@ -113,20 +113,7 @@ async function procesarTextoSimple(message, res) {
             return res.json({ success: true, mensaje: "Usuario marcado como STOP automáticamente" });
         }
 
-        // 5. Verificar si el último mensaje del sistema ya es una respuesta a esta pregunta
-        const ultimosSistema = historialActualizado.filter(m => m.from === "sistema");
-        if (ultimosSistema.length > 0) {
-            const ultimoMensajeSistema = ultimosSistema[ultimosSistema.length - 1];
-            // Si el último mensaje del sistema contiene las opciones y el usuario ya eligió
-            if (ultimoMensajeSistema.mensaje.includes("¿Cuál te interesa más?") && 
-                (mensajeLimpio.toLowerCase().includes("virtual") || 
-                 mensajeLimpio.toLowerCase().includes("presencial") ||
-                 mensajeLimpio === "1" || mensajeLimpio === "2")) {
-                logInfo('procesarTextoSimple', 'Usuario respondió a opciones existentes', { userId, respuesta: mensajeLimpio });
-            }
-        }
-
-        // 6. RESPUESTA SIMPLE: Solo GPT-4 con el prompt institucional
+        // 5. RESPUESTA SIMPLE: Dejar que GPT-4 maneje todo con el contexto y prompt
         logInfo('procesarTextoSimple', 'Generando respuesta con GPT-4', { userId });
         
         try {
@@ -145,7 +132,7 @@ async function procesarTextoSimple(message, res) {
 
             const respuestaBot = await openaiService.generateResponse(mensajesParaOpenAI, {
                 maxTokens: 300,
-                temperature: 0.7
+                temperature: 0.3  // Reducido de 0.7 a 0.3 para respuestas más consistentes
             });
 
             // 6. Verificar que no estamos enviando un mensaje duplicado
