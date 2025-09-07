@@ -25,14 +25,25 @@ async function enviarYGuardar(to, userId, nombre, mensaje, historial, nivel) {
             }
         ]);
         
-        await guardarConversacionEnDB({
-            userId: userId,
-            nombre: nombre,
-            mensajes: nuevoHistorial,
-            nivel: nivel
-        });
-        
-        logInfo('procesarTextoMenu', 'Mensaje enviado y guardado', { to, nivel, mensaje: mensaje.substring(0, 50) });
+        // Intentar guardar en DB, usar memoria como fallback
+        try {
+            await guardarConversacionEnDB({
+                userId: userId,
+                nombre: nombre,
+                mensajes: nuevoHistorial,
+                nivel: nivel
+            });
+            logInfo('procesarTextoMenu', 'Mensaje enviado y guardado en DB', { to, nivel });
+        } catch (dbError) {
+            // Fallback a memoria
+            memoryCache.set(userId, {
+                mensajes: nuevoHistorial,
+                observaciones: "",
+                nivel: nivel,
+                nombre: nombre
+            });
+            logInfo('procesarTextoMenu', 'Mensaje enviado y guardado en memoria (DB no disponible)', { to, nivel });
+        }
         
     } catch (error) {
         logError('procesarTextoMenu', 'Error en enviarYGuardar', { to, error });
@@ -115,6 +126,9 @@ async function marcarStopAutomatico(userId) {
     }
 }
 
+// Cache en memoria para cuando la DB no funcione
+const memoryCache = new Map();
+
 /**
  * FUNCIÓN PRINCIPAL - Sistema de menús numéricos con opción de IA
  */
@@ -152,8 +166,16 @@ async function procesarTextoMenu(message, res) {
         });
 
         // 1. Obtener historial de conversación y nivel actual
-        const { mensajes: historial = [], observaciones = "", nivel = 0 } = 
-            await obtenerConversacionDeDB(userId);
+        let conversacionData;
+        try {
+            conversacionData = await obtenerConversacionDeDB(userId);
+        } catch (error) {
+            // Fallback a memoria si la DB falla
+            conversacionData = memoryCache.get(userId) || { mensajes: [], observaciones: "", nivel: 0 };
+            logInfo('procesarTextoMenu', 'Usando cache en memoria (DB no disponible)', { userId });
+        }
+        
+        const { mensajes: historial = [], observaciones = "", nivel = 0 } = conversacionData;
         const historialLimpio = limpiarDuplicados(historial);
 
         // 2. Verificar si el usuario está bloqueado
