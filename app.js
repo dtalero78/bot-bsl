@@ -55,7 +55,9 @@ app.use(globalRateLimiter.middleware());
 
 const { manejarControlBot } = require('./handlers/controlBot');
 const { procesarImagen } = require('./handlers/procesarImagen');
-const { procesarTexto } = require('./handlers/procesarTexto');
+// Importar versión simplificada (solo un prompt)
+const { procesarTextoSimple } = require('./handlers/procesarTextoSimple');
+// const { procesarTexto } = require('./handlers/procesarTexto'); // Versión compleja comentada
 const { guardarConversacionEnDB, obtenerConversacionDeDB } = require('./utils/dbAPI');
 const { obtenerTextoMensaje, extraerUserId, limpiarDuplicados, logInfo, logError } = require('./utils/shared');
 const logger = require('./utils/logger');
@@ -155,7 +157,7 @@ app.post('/soporte', async (req, res) => {
             }
             // Texto recibido
             if (message.type === "text") {
-                return await procesarTexto(message, res);
+                return await procesarTextoSimple(message, res);
             }
         }
 
