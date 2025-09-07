@@ -141,6 +141,12 @@
             background: #f9f9f9;
         }
         
+        .conversations-table th:last-child,
+        .conversations-table td:last-child {
+            text-align: center;
+            width: 100px;
+        }
+        
         .phase-badge {
             display: inline-block;
             padding: 4px 8px;
@@ -452,6 +458,7 @@
                             <th>Mensajes</th>
                             <th>Estado</th>
                             <th>Última Actividad</th>
+                            <th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -472,6 +479,14 @@
                         <td>${conv.total_mensajes || 0}</td>
                         <td><span class="status-badge status-${statusClass}">${statusText}</span></td>
                         <td>${lastActivity}</td>
+                        <td>
+                            <button 
+                                onclick="clearConversationHistory('${conv.user_id}', '${conv.nombre || 'Usuario'}')" 
+                                style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;"
+                                title="Borrar historial de conversación">
+                                🗑️ Borrar
+                            </button>
+                        </td>
                     </tr>
                 `;
             });
@@ -740,6 +755,36 @@
             } finally {
                 button.disabled = false;
                 button.textContent = '🔧 Corregir Usuarios Bloqueados';
+            }
+        }
+        
+        // Función para borrar historial de conversación
+        async function clearConversationHistory(userId, userName) {
+            if (!confirm(`¿Estás seguro de que quieres borrar todo el historial de conversación de ${userName} (${userId})?\n\nEsta acción NO se puede deshacer.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/admin/conversations/${userId}/history`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${API_TOKEN}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`✅ Historial borrado exitosamente para ${userName}`);
+                    // Recargar las conversaciones para actualizar la vista
+                    loadConversations();
+                } else {
+                    alert(`❌ Error: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Error borrando historial:', error);
+                alert('❌ Error al borrar el historial');
             }
         }
         

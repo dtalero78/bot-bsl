@@ -559,6 +559,46 @@ router.post('/test-openai', async (req, res) => {
 });
 
 /**
+ * Borrar historial de una conversación específica
+ */
+router.delete('/conversations/:userId/history', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        // Actualizar la conversación para vaciar mensajes pero mantener otros datos
+        const result = await pool.query(`
+            UPDATE conversaciones 
+            SET mensajes = '[]'::jsonb,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = $1
+            RETURNING user_id, nombre
+        `, [userId]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Conversación no encontrada' 
+            });
+        }
+        
+        logger.info('AdminRoute', 'Conversation history cleared', { userId });
+        
+        res.json({
+            success: true,
+            message: `Historial borrado para ${userId}`,
+            user: result.rows[0]
+        });
+        
+    } catch (error) {
+        logger.error('AdminRoute', 'Error clearing conversation history', { error });
+        res.status(500).json({ 
+            success: false, 
+            error: 'Error borrando historial' 
+        });
+    }
+});
+
+/**
  * Obtener todos los usuarios bloqueados
  */
 router.get('/blocked-users', async (req, res) => {
