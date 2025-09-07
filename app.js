@@ -229,6 +229,78 @@ app.use('/api/admin', adminRouter);
 const flowEditorRouter = require('./routes/flowEditor');
 app.use('/', flowEditorRouter);
 
+// API endpoint para marcar como pagado
+app.post('/api/marcarPagado', async (req, res) => {
+    try {
+        const { cedula, userId } = req.body;
+        
+        if (!cedula) {
+            return res.status(400).json({ success: false, error: "Cédula es requerida" });
+        }
+        
+        // Importar la función marcarPagado
+        const { marcarPagado } = require('./utils/marcarPagado');
+        
+        // Marcar como pagado en la base de datos
+        const resultado = await marcarPagado(cedula);
+        
+        if (resultado.success) {
+            logInfo('api/marcarPagado', 'Paciente marcado como pagado', { cedula, userId });
+            
+            // Generar PDF si es necesario
+            const { generarPDF } = require('./utils/pdf');
+            const pdfUrl = await generarPDF(cedula);
+            
+            return res.json({ 
+                success: true, 
+                mensaje: "Pago registrado exitosamente",
+                pdfUrl: pdfUrl 
+            });
+        } else {
+            return res.status(400).json({ success: false, error: resultado.error });
+        }
+        
+    } catch (error) {
+        logError('api/marcarPagado', error, { body: req.body });
+        return res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// API endpoint para generar certificado
+app.post('/api/generarCertificado', async (req, res) => {
+    try {
+        const { cedula, userId } = req.body;
+        
+        if (!cedula) {
+            return res.status(400).json({ success: false, error: "Cédula es requerida" });
+        }
+        
+        // Importar función para generar PDF
+        const { generarPDF } = require('./utils/pdf');
+        
+        // Generar el PDF del certificado
+        const pdfUrl = await generarPDF(cedula);
+        
+        if (pdfUrl) {
+            logInfo('api/generarCertificado', 'Certificado generado', { cedula, userId, pdfUrl });
+            return res.json({ 
+                success: true, 
+                pdfUrl: pdfUrl,
+                mensaje: "Certificado generado exitosamente" 
+            });
+        } else {
+            return res.status(400).json({ 
+                success: false, 
+                error: "No se pudo generar el certificado" 
+            });
+        }
+        
+    } catch (error) {
+        logError('api/generarCertificado', error, { body: req.body });
+        return res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.post('/api/guardarMensaje', async (req, res) => {
     try {
         const { userId, nombre, mensaje, from = "sistema", timestamp } = req.body;
