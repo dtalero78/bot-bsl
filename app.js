@@ -81,6 +81,33 @@ function identificarActor(message) {
 }
 
 
+// Nuevo endpoint dedicado para imágenes
+app.post('/webhook-imagenes', async (req, res) => {
+    try {
+        const body = req.body;
+        if (!body || !body.messages || !Array.isArray(body.messages)) {
+            return res.status(400).json({ success: false, error: "No hay mensajes en el payload." });
+        }
+        
+        const message = body.messages[0];
+        
+        // Solo procesar si es una imagen
+        if (message.type === "image") {
+            const actor = identificarActor(message);
+            
+            // Solo procesar imágenes de usuarios
+            if (actor === "usuario") {
+                return await procesarImagen(message, res);
+            }
+        }
+        
+        return res.json({ success: true, mensaje: "No es una imagen o no es de usuario." });
+    } catch (error) {
+        logError('app.js', error, { endpoint: '/webhook-imagenes' });
+        return res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.post('/soporte', async (req, res) => {
     try {
         const body = req.body;
@@ -152,9 +179,13 @@ app.post('/soporte', async (req, res) => {
 
         // USUARIO (otro número)
         if (actor === "usuario") {
-            // Imagen recibida
+            // Imagen recibida - IGNORAR si se usa webhook dedicado
             if (message.type === "image") {
-                return await procesarImagen(message, res);
+                // Opción 1: Ignorar completamente (si tienes webhook dedicado en Whapi)
+                return res.json({ success: true, mensaje: "Imagen será procesada por webhook dedicado." });
+                
+                // Opción 2: Procesar aquí también (descomentar si quieres procesar en ambos)
+                // return await procesarImagen(message, res);
             }
             // Texto recibido
             if (message.type === "text") {
