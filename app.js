@@ -12,6 +12,9 @@ app.use(express.json({ limit: '10mb' }));
 // Servir archivos estáticos para el dashboard
 app.use(express.static('public'));
 
+// Servir React frontend desde /dashboard
+app.use('/dashboard', express.static('frontend/dist'));
+
 // Middleware de logging, métricas y rate limiting
 const requestLogger = require('./middleware/requestLogger');
 const { requestMetricsMiddleware } = require('./middleware/performanceMetrics');
@@ -216,6 +219,10 @@ app.post('/api/guardarMensaje', async (req, res) => {
     }
 });
 
+// Ruta específica para React frontend
+app.get('/dashboard', (req, res) => {
+    res.sendFile(__dirname + '/frontend/dist/index.html');
+});
 
 const PORT = config.server.port;
 app.listen(PORT, () => {
