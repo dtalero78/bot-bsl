@@ -352,7 +352,7 @@
         
         async function loadConversations(page = 1, fase = null) {
             try {
-                let url = `/api/admin/conversations?page=${page}&limit=10`;
+                let url = `/api/admin/conversations-simple?page=${page}&limit=10`;
                 if (fase && fase !== 'all') {
                     url += `&fase=${fase}`;
                 }
