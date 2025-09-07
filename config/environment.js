@@ -166,7 +166,7 @@ if (missingVars.length > 0) {
     }
 }
 
-// Log de configuración (sin mostrar credenciales)
+// Log de configuración (sin mostrar credenciales) - Updated for new OpenAI key
 console.log('🔧 Configuración cargada:', {
     environment: config.server.environment,
     port: config.server.port,
