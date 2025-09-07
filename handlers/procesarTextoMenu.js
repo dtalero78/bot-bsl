@@ -200,7 +200,8 @@ async function procesarTextoMenu(message, res) {
 
         // 4.5 DETECCIÓN AUTOMÁTICA DE NÚMERO DE DOCUMENTO EN CUALQUIER MOMENTO
         // Si el usuario envía un número que parece documento, procesarlo inmediatamente
-        if (esCedula(mensajeLimpio) && nivel !== 'esperando_cedula' && nivel !== 'esperando_pago') {
+        // EXCEPTO si estamos esperando documento después de comprobante o en flujos específicos
+        if (esCedula(mensajeLimpio) && nivel !== 'esperando_cedula' && nivel !== 'esperando_pago' && nivel !== 'esperando_documento_pago') {
             logInfo('procesarTextoMenu', 'Detectado número de documento directo', { userId, cedula: mensajeLimpio, nivelActual: nivel });
             
             try {
@@ -414,6 +415,49 @@ async function procesarTextoMenu(message, res) {
             } else {
                 response = `❌ Por favor escribe un número de documento válido (solo números).\n\n4️⃣ Tengo otra pregunta\n0️⃣ Menú principal`;
                 nuevoNivel = 'esperando_cedula';
+            }
+            
+        } else if (nivel === 'esperando_documento_pago') {
+            // Usuario acaba de enviar comprobante de pago, esperando documento
+            if (esCedula(mensajeLimpio)) {
+                try {
+                    await enviarYGuardar(to, userId, nombre, "✅ Documento recibido. Procesando tu pago...", historialActualizado, nivel);
+                    
+                    // Marcar como pagado
+                    const resultadoPago = await marcarPagado(mensajeLimpio);
+                    
+                    if (resultadoPago.success) {
+                        logInfo('procesarTextoMenu', 'Pago marcado después de comprobante', { userId, cedula: mensajeLimpio });
+                        
+                        try {
+                            // Generar y enviar PDF
+                            const pdfUrl = await generarPdfDesdeApi2Pdf(mensajeLimpio);
+                            
+                            if (pdfUrl) {
+                                await sendPdf(to, pdfUrl, mensajeLimpio);
+                                response = `🎉 *¡Proceso completado exitosamente!*\n\n✅ Pago registrado\n📄 Certificado médico enviado\n✨ Sin marca de agua\n\nGracias por tu pago. Tu certificado está listo para descargar.\n\n¿Necesitas algo más?\n0️⃣ Menú principal`;
+                            } else {
+                                response = `✅ *Pago registrado exitosamente*\n\n⚠️ Hubo un problema generando el PDF automáticamente. Un asesor te lo enviará en breve.\n\n0️⃣ Menú principal`;
+                            }
+                        } catch (pdfError) {
+                            logError('procesarTextoMenu', 'Error generando PDF después de comprobante', { userId, cedula: mensajeLimpio, error: pdfError });
+                            response = `✅ *Pago registrado*\n\n⚠️ No pude generar el certificado automáticamente. Un asesor te contactará pronto.\n\n0️⃣ Menú principal`;
+                        }
+                    } else {
+                        response = `❌ No encontré un registro con el documento ${mensajeLimpio}.\n\nPor favor verifica:\n• Que el número esté correcto\n• Que hayas completado tu examen médico\n\n1️⃣ Intentar con otro documento\n2️⃣ Contactar un asesor\n0️⃣ Menú principal`;
+                    }
+                    nuevoNivel = 1;
+                } catch (error) {
+                    logError('procesarTextoMenu', 'Error procesando pago después de comprobante', { userId, error });
+                    response = `❌ Hubo un error procesando tu pago. Por favor intenta más tarde o contacta un asesor.\n\n0️⃣ Menú principal`;
+                    nuevoNivel = 1;
+                }
+            } else if (mensajeLimpio === "0") {
+                response = `👋 ¡Hola ${nombre}!\n\nEscribe el *número* de la opción que necesitas:\n\n1️⃣ Exámenes Ocupacionales\n2️⃣ Ya tengo mi examen (pagar/descargar)\n3️⃣ Consultar estado de mi cita\n4️⃣ Otra pregunta`;
+                nuevoNivel = 1;
+            } else {
+                response = `❌ Por favor escribe un número de documento válido (solo números, sin puntos).\n\nEjemplo: 1234567890\n\n0️⃣ Menú principal`;
+                nuevoNivel = 'esperando_documento_pago';
             }
             
         } else if (nivel === 'esperando_pago') {

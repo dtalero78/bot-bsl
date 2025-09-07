@@ -222,7 +222,21 @@ class QueueService {
                 valorDetectado = informacionPago.valor;
                 
                 if (valorDetectado && /^\d{4,}$/.test(valorDetectado)) {
-                    mensajeRespuesta = `✅ Comprobante recibido - Valor detectado: $${valorDetectado}\n\nAhora escribe SOLO tu número de documento *(sin puntos ni letras)*.`;
+                    mensajeRespuesta = `✅ *Comprobante de pago recibido correctamente*\n\n💰 Valor detectado: $${valorDetectado}\n\n📝 Para completar el proceso y generar tu certificado, por favor escribe tu *número de documento* (solo números, sin puntos).`;
+                    
+                    // Actualizar el nivel de la conversación para esperar documento después de comprobante
+                    try {
+                        const { guardarConversacionEnDB } = require('../utils/dbAPI');
+                        await guardarConversacionEnDB({
+                            userId: userId,
+                            nombre: nombre,
+                            mensajes: historial,
+                            nivel: 'esperando_documento_pago'
+                        });
+                        logInfo('QueueService', 'Nivel actualizado a esperando_documento_pago', { userId });
+                    } catch (dbError) {
+                        logError('QueueService', 'Error actualizando nivel en DB', { userId, error: dbError });
+                    }
                 } else {
                     mensajeRespuesta = "❌ No pude identificar el valor en el comprobante. Por favor envía una imagen más clara del soporte de pago.";
                 }
