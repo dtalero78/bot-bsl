@@ -71,13 +71,21 @@ router.post('/api/flow/deploy', async (req, res) => {
     try {
         const flowData = req.body;
         
-        // Validar que el flujo tenga al menos un nodo de inicio
-        const startNodes = flowData.nodes.filter(n => n.type === 'start');
-        if (startNodes.length === 0) {
-            throw new Error('El flujo debe tener al menos un nodo de inicio');
+        // Importar FlowExecutionService
+        const FlowExecutionService = require('../services/flowExecutionService');
+        const flowService = new FlowExecutionService();
+        
+        // Validar flujo completo
+        const validationResult = await flowService.validateFlow(flowData);
+        if (!validationResult.isValid) {
+            return res.status(400).json({
+                success: false,
+                error: 'Flujo inválido',
+                details: validationResult.errors
+            });
         }
 
-        // Guardar flujo
+        // Marcar flujo como desplegado
         flowData.metadata = {
             ...flowData.metadata,
             deployedAt: new Date().toISOString(),
@@ -85,23 +93,26 @@ router.post('/api/flow/deploy', async (req, res) => {
             isActive: true
         };
 
+        // Guardar flujo válido
         await fs.writeFile(FLOW_FILE_PATH, JSON.stringify(flowData, null, 2));
 
-        // TODO: Convertir flujo visual a lógica ejecutable
-        // Por ahora solo guardamos, en el futuro esto debe:
-        // 1. Validar el flujo completo
-        // 2. Generar código ejecutable
-        // 3. Actualizar los handlers del bot
+        // Inicializar servicio de ejecución con el nuevo flujo
+        await flowService.initializeFlow(flowData);
         
-        logInfo('flowEditor', 'Flujo desplegado en producción', {
+        logInfo('flowEditor', 'Flujo desplegado y activado en producción', {
             nodeCount: flowData.nodes.length,
-            startNodes: startNodes.length
+            validationPassed: true,
+            executionReady: true
         });
         
         res.json({ 
             success: true, 
-            message: 'Flujo aplicado exitosamente',
-            warning: 'Nota: La integración con el bot actual está en desarrollo'
+            message: 'Flujo aplicado y activado exitosamente',
+            details: {
+                nodesProcessed: flowData.nodes.length,
+                connectionsProcessed: flowData.connections?.length || 0,
+                validationPassed: true
+            }
         });
     } catch (error) {
         logError('flowEditor', 'Error desplegando flujo', { error });

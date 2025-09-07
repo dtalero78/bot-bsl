@@ -10,6 +10,57 @@ const {
     manejarRevisionCertificado, 
     manejarPago 
 } = require('./faseHandlers');
+const FlowExecutionService = require('../services/flowExecutionService');
+const fs = require('fs').promises;
+const path = require('path');
+
+/**
+ * Verifica si hay un flujo visual activo y lo ejecuta
+ */
+async function procesarConFlujoVisual(message, historial, userId, nombre, fase) {
+    try {
+        const FLOW_FILE_PATH = path.join(__dirname, '../config/botFlow.json');
+        
+        // Verificar si existe flujo visual desplegado
+        const fileContent = await fs.readFile(FLOW_FILE_PATH, 'utf8');
+        const flowData = JSON.parse(fileContent);
+        
+        if (!flowData.metadata?.isActive) {
+            return null; // No hay flujo activo, usar handlers tradicionales
+        }
+        
+        const flowService = new FlowExecutionService();
+        await flowService.initializeFlow(flowData);
+        
+        const userMessage = obtenerTextoMensaje(message);
+        
+        // Ejecutar flujo visual
+        const resultado = await flowService.executeFlow(userMessage, {
+            userId,
+            nombre,
+            fase,
+            historial,
+            chatId: message.chat_id,
+            from: message.from
+        });
+        
+        if (resultado.success) {
+            logInfo('procesarTexto', 'Mensaje procesado con flujo visual', {
+                userId,
+                nodeExecuted: resultado.nodeId,
+                responseGenerated: !!resultado.response
+            });
+            
+            return resultado;
+        }
+        
+        return null; // Flujo no manejó el mensaje, usar handlers tradicionales
+        
+    } catch (error) {
+        logError('procesarTexto', 'Error ejecutando flujo visual', { userId, error });
+        return null; // Fallback a handlers tradicionales
+    }
+}
 
 /**
  * Marca automáticamente como STOP cuando el admin envía mensaje específico
@@ -147,8 +198,27 @@ async function procesarTexto(message, res) {
             return res.json({ success: true, mensaje: "Usuario marcado como STOP automáticamente" });
         }
 
-        // 6. Enrutar a la fase correspondiente
-        logInfo('procesarTexto', 'Enrutando a manejador de fase', { userId, fase: nuevaFase });
+        // 6. Intentar procesar con flujo visual primero
+        const resultadoFlujoVisual = await procesarConFlujoVisual(
+            message, 
+            historialActualizado, 
+            userId, 
+            nombre, 
+            nuevaFase
+        );
+        
+        if (resultadoFlujoVisual && resultadoFlujoVisual.success) {
+            logInfo('procesarTexto', 'Conversación procesada completamente con flujo visual', { userId });
+            return res.json({ 
+                success: true, 
+                mensaje: "Procesado con flujo visual",
+                visualFlow: true,
+                nodeExecuted: resultadoFlujoVisual.nodeId
+            });
+        }
+        
+        // 7. Si no hay flujo visual activo, usar manejadores de fase tradicionales
+        logInfo('procesarTexto', 'Enrutando a manejador de fase tradicional', { userId, fase: nuevaFase });
         
         switch (nuevaFase) {
             case "inicial":
