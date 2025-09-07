@@ -507,7 +507,105 @@
             console.log('Confirmado, enviando petición...');
             console.log('Token:', API_TOKEN);
             
+            // Dividir en lotes de 100 números para evitar timeouts
+            const BATCH_SIZE = 100;
+            const batches = [];
+            
+            for (let i = 0; i < numbers.length; i += BATCH_SIZE) {
+                batches.push(numbers.slice(i, i + BATCH_SIZE));
+            }
+            
+            console.log(`Dividiendo en ${batches.length} lotes de máximo ${BATCH_SIZE} números`);
+            
+            let totalProcessed = 0;
+            let totalCreated = 0;
+            let totalUpdated = 0;
+            let totalErrors = [];
+            
+            // Procesar lote por lote
+            for (let i = 0; i < batches.length; i++) {
+                const batch = batches[i];
+                console.log(`Procesando lote ${i + 1}/${batches.length} con ${batch.length} números...`);
+                
+                try {
+                    const requestData = {
+                        numbers: batch,
+                        reason: `${reason} - Lote ${i + 1}/${batches.length}`
+                    };
+                    
+                    const response = await fetch('/api/admin/bulk/stopbot', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${API_TOKEN}`
+                        },
+                        body: JSON.stringify(requestData)
+                    });
+                    
+                    console.log(`Lote ${i + 1} - Status:`, response.status);
+                    
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error(`Error en lote ${i + 1}:`, response.status, errorText);
+                        totalErrors.push(`Lote ${i + 1}: ${errorText}`);
+                        continue;
+                    }
+                    
+                    const data = await response.json();
+                    console.log(`Lote ${i + 1} - Respuesta:`, data);
+                    
+                    if (data.success && data.results) {
+                        totalProcessed += data.results.processed || 0;
+                        totalCreated += data.results.created || 0;
+                        totalUpdated += data.results.updated || 0;
+                        if (data.results.errors) {
+                            totalErrors.push(...data.results.errors);
+                        }
+                    }
+                    
+                    // Pausa de 500ms entre lotes para no sobrecargar el servidor
+                    if (i < batches.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                    
+                } catch (error) {
+                    console.error(`Error en lote ${i + 1}:`, error);
+                    totalErrors.push(`Lote ${i + 1}: ${error.message}`);
+                }
+            }
+            
+            console.log('=== RESUMEN FINAL ===');
+            console.log('Total procesados:', totalProcessed);
+            console.log('Total creados:', totalCreated);
+            console.log('Total actualizados:', totalUpdated);
+            console.log('Total errores:', totalErrors.length);
+            
+            // Mostrar resultado final
+            const successMessage = `Procesamiento completado:\n` +
+                `- Procesados: ${totalProcessed}\n` +
+                `- Creados: ${totalCreated}\n` +
+                `- Actualizados: ${totalUpdated}\n` +
+                `- Errores: ${totalErrors.length}`;
+            
+            alert(successMessage);
+            
+            if (totalErrors.length > 0) {
+                console.log('Errores detallados:', totalErrors);
+                alert(`Se encontraron ${totalErrors.length} errores. Ver consola para detalles.`);
+            }
+            
+            // Limpiar campos si fue exitoso
+            if (totalProcessed > 0) {
+                document.getElementById('bulkNumbers').value = '';
+                document.getElementById('stopReason').value = '';
+                loadData(); // Recargar datos
+            }
+            
+            return; // Salir de la función aquí
+            
             try {
+                // Código original comentado
+                /*
                 const requestData = {
                     numbers: numbers,
                     reason: reason
@@ -526,36 +624,10 @@
                 
                 console.log('Respuesta HTTP status:', response.status);
                 console.log('Respuesta HTTP ok:', response.ok);
+                */
                 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('Error HTTP:', response.status, errorText);
-                    throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
-                }
-                
-                const data = await response.json();
-                console.log('Datos de respuesta:', data);
-                
-                if (data.success) {
-                    console.log('Éxito en el servidor');
-                    alert(`Éxito: ${data.message}`);
-                    document.getElementById('bulkNumbers').value = '';
-                    document.getElementById('stopReason').value = '';
-                    
-                    // Recargar datos
-                    loadData();
-                    
-                    // Mostrar detalles si hay errores
-                    if (data.results && data.results.errors && data.results.errors.length > 0) {
-                        console.log('Errores encontrados:', data.results.errors);
-                        alert(`Procesado con ${data.results.errors.length} errores. Ver consola para detalles.`);
-                    }
-                } else {
-                    console.error('Error del servidor:', data.error);
-                    alert(`Error: ${data.error}`);
-                }
             } catch (error) {
-                console.error('Error en catch:', error);
+                console.error('Error general:', error);
                 alert(`Error: ${error.message}`);
             }
             
