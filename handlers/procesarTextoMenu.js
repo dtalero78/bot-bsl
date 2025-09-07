@@ -2,7 +2,6 @@ const { obtenerConversacionDeDB, actualizarObservaciones, guardarConversacionEnD
 const { limpiarDuplicados, extraerUserId, obtenerTextoMensaje, logInfo, logError } = require('../utils/shared');
 const ValidationService = require('../utils/validation');
 const MessageService = require('../services/messageService');
-const { getOpenAIService } = require('../services/openaiService');
 const { promptInstitucional } = require('../utils/prompt');
 const { sendMessage } = require('../utils/sendMessage');
 const { consultarInformacionPaciente } = require('../utils/consultarPaciente');
@@ -46,23 +45,33 @@ async function enviarYGuardar(to, userId, nombre, mensaje, historial, nivel) {
  */
 async function manejarOtraPregunta(userId, nombre, to, mensajeLimpio, historial) {
     try {
-        const openaiService = getOpenAIService();
+        // Usar OpenAI directamente como en faseHandlers.js
+        const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
         
-        // Preparar mensajes para OpenAI con contexto completo
-        const mensajesParaOpenAI = [
-            { role: 'system', content: promptInstitucional },
-            // Incluir últimos 15 mensajes para mejor contexto
-            ...historial.slice(-15).map(m => ({
-                role: m.from === "usuario" ? "user" : "assistant",
-                content: m.mensaje
-            })),
-            { role: 'user', content: mensajeLimpio }
-        ];
-
-        const respuestaBot = await openaiService.generateResponse(mensajesParaOpenAI, {
-            maxTokens: 300,
-            temperature: 0.3
+        const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${process.env.OPENAI_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: 'gpt-4o',
+                messages: [
+                    { role: 'system', content: promptInstitucional },
+                    // Incluir últimos 15 mensajes para mejor contexto
+                    ...historial.slice(-15).map(m => ({
+                        role: m.from === "usuario" ? "user" : "assistant",
+                        content: m.mensaje
+                    })),
+                    { role: 'user', content: mensajeLimpio }
+                ],
+                max_tokens: 300,
+                temperature: 0.3
+            })
         });
+
+        const openaiJson = await aiRes.json();
+        const respuestaBot = openaiJson.choices?.[0]?.message?.content || "¿En qué más puedo ayudarte?";
 
         // Agregar opción de volver al menú
         const respuestaConMenu = respuestaBot + "\n\n¿Necesitas algo más?\n0️⃣ Volver al menú principal";
@@ -73,7 +82,22 @@ async function manejarOtraPregunta(userId, nombre, to, mensajeLimpio, historial)
         
     } catch (error) {
         logError('procesarTextoMenu', 'Error en manejarOtraPregunta', { userId, error });
-        throw error;
+        
+        // Fallback cuando la IA no está disponible
+        const respuestaFallback = `❌ Lo siento, el sistema de respuestas inteligentes no está disponible en este momento.
+
+Para tu pregunta: "${mensajeLimpio}"
+
+Te recomiendo:
+• Revisar nuestro menú principal con las opciones más comunes
+• Contactar directamente a un asesor
+
+¿Necesitas algo más?
+0️⃣ Volver al menú principal`;
+
+        await enviarYGuardar(to, userId, nombre, respuestaFallback, historial, 'pregunta_ia');
+        
+        return { success: true, respuesta: respuestaFallback };
     }
 }
 
