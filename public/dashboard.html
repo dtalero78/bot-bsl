@@ -144,7 +144,7 @@
         .conversations-table th:last-child,
         .conversations-table td:last-child {
             text-align: center;
-            width: 100px;
+            width: 150px;
         }
         
         .phase-badge {
@@ -481,6 +481,12 @@
                         <td>${lastActivity}</td>
                         <td>
                             <button 
+                                onclick="viewConversation('${conv.user_id}', '${conv.nombre || 'Usuario'}')" 
+                                style="padding: 4px 8px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px; margin-right: 5px;"
+                                title="Ver conversación completa">
+                                👁️ Ver
+                            </button>
+                            <button 
                                 onclick="clearConversationHistory('${conv.user_id}', '${conv.nombre || 'Usuario'}')" 
                                 style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;"
                                 title="Borrar historial de conversación">
@@ -758,6 +764,116 @@
             }
         }
         
+        // Función para ver conversación completa
+        async function viewConversation(userId, userName) {
+            try {
+                // Obtener la conversación completa
+                const response = await fetch(`/api/admin/conversations/${userId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${API_TOKEN}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success && data.conversation) {
+                    displayConversationModal(data.conversation, userName);
+                } else {
+                    alert(`❌ Error: ${data.error || 'No se pudo cargar la conversación'}`);
+                }
+            } catch (error) {
+                console.error('Error cargando conversación:', error);
+                alert('❌ Error al cargar la conversación');
+            }
+        }
+        
+        function displayConversationModal(conversation, userName) {
+            const modal = new bootstrap.Modal(document.getElementById('conversationModal'));
+            const modalTitle = document.getElementById('conversationModalLabel');
+            const conversationContent = document.getElementById('conversationContent');
+            
+            // Configurar título del modal
+            modalTitle.innerHTML = `
+                Conversación con <strong>${userName}</strong> (${conversation.userId})
+                <br><small class="text-muted">
+                    Fase: ${conversation.fase} | 
+                    Total mensajes: ${conversation.totalMensajes} |
+                    Última actualización: ${new Date(conversation.ultimaActualizacion).toLocaleString('es-CO')}
+                </small>
+            `;
+            
+            // Generar contenido de mensajes
+            let html = '';
+            
+            if (!conversation.mensajes || conversation.mensajes.length === 0) {
+                html = '<div class="text-muted text-center p-3">No hay mensajes en esta conversación</div>';
+            } else {
+                conversation.mensajes.forEach((mensaje, index) => {
+                    const timestamp = new Date(mensaje.timestamp).toLocaleString('es-CO');
+                    let actorClass = '';
+                    let actorIcon = '';
+                    let actorName = '';
+                    
+                    switch (mensaje.from) {
+                        case 'usuario':
+                            actorClass = 'bg-light border-start border-primary border-3';
+                            actorIcon = '👤';
+                            actorName = 'Usuario';
+                            break;
+                        case 'sistema':
+                            actorClass = 'bg-info bg-opacity-10 border-start border-info border-3';
+                            actorIcon = '🤖';
+                            actorName = 'Bot';
+                            break;
+                        case 'admin':
+                            actorClass = 'bg-warning bg-opacity-10 border-start border-warning border-3';
+                            actorIcon = '👨‍💼';
+                            actorName = 'Administrador';
+                            break;
+                        default:
+                            actorClass = 'bg-secondary bg-opacity-10 border-start border-secondary border-3';
+                            actorIcon = '❓';
+                            actorName = mensaje.from || 'Desconocido';
+                    }
+                    
+                    html += `
+                        <div class="message-item mb-3 p-3 rounded ${actorClass}">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div class="fw-bold">
+                                    ${actorIcon} ${actorName}
+                                </div>
+                                <small class="text-muted">${timestamp}</small>
+                            </div>
+                            <div class="message-text">
+                                ${mensaje.mensaje.replace(/\n/g, '<br>')}
+                            </div>
+                            ${mensaje.tipo ? `<small class="text-muted d-block mt-1">Tipo: ${mensaje.tipo}</small>` : ''}
+                        </div>
+                    `;
+                });
+            }
+            
+            // Agregar información adicional
+            if (conversation.observaciones) {
+                html += `
+                    <div class="alert alert-warning mt-3">
+                        <strong>📝 Observaciones:</strong> ${conversation.observaciones}
+                    </div>
+                `;
+            }
+            
+            if (conversation.truncated) {
+                html += `
+                    <div class="alert alert-info mt-3">
+                        <strong>ℹ️ Nota:</strong> Esta conversación ha sido truncada. Solo se muestran los últimos mensajes.
+                    </div>
+                `;
+            }
+            
+            conversationContent.innerHTML = html;
+            modal.show();
+        }
+        
         // Función para borrar historial de conversación
         async function clearConversationHistory(userId, userName) {
             if (!confirm(`¿Estás seguro de que quieres borrar todo el historial de conversación de ${userName} (${userId})?\n\nEsta acción NO se puede deshacer.`)) {
@@ -907,5 +1023,25 @@
             }
         }
     </script>
+    
+    <!-- Modal para ver conversación -->
+    <div class="modal fade" id="conversationModal" tabindex="-1" aria-labelledby="conversationModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="conversationModalLabel">Conversación</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="conversationContent" style="max-height: 500px; overflow-y: auto;">
+                        <!-- Contenido de la conversación aparecerá aquí -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
