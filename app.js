@@ -219,8 +219,13 @@ app.post('/api/guardarMensaje', async (req, res) => {
     }
 });
 
-// Ruta específica para React frontend
+// React frontend routes
 app.get('/dashboard', (req, res) => {
+    res.sendFile(__dirname + '/frontend/dist/index.html');
+});
+
+// Serve React main page from root (shadcn/ui version)
+app.get('/', (req, res) => {
     res.sendFile(__dirname + '/frontend/dist/index.html');
 });
 
