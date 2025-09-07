@@ -16,6 +16,39 @@ const MessageService = require('../services/messageService');
 const { getOpenAIService } = require('../services/openaiService');
 const { config } = require('../config/environment');
 
+/**
+ * Función auxiliar para enviar mensaje y guardar en base de datos
+ */
+async function simpleEnviarYGuardar(to, from, nombre, mensaje, historial, fase) {
+    try {
+        // Enviar mensaje por WhatsApp
+        await sendMessage(to, mensaje);
+        
+        // Actualizar historial con el mensaje del bot
+        const nuevoHistorial = limpiarDuplicados([
+            ...historial,
+            {
+                from: "sistema",
+                mensaje: mensaje,
+                timestamp: new Date().toISOString()
+            }
+        ]);
+        
+        // Guardar en base de datos
+        await guardarConversacionEnDB({
+            userId: extraerUserId(to),
+            nombre: nombre,
+            mensajes: nuevoHistorial,
+            fase: fase
+        });
+        
+        logInfo('faseHandlers', 'Mensaje enviado y guardado', { to, fase, mensaje: mensaje.substring(0, 50) });
+        
+    } catch (error) {
+        logError('faseHandlers', 'Error en simpleEnviarYGuardar', { to, error });
+        throw error;
+    }
+}
 
 
 /**
