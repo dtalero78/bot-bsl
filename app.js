@@ -163,7 +163,7 @@ app.post('/soporte', async (req, res) => {
 
 // Root route - redirect to admin panel
 app.get('/', (req, res) => {
-    res.redirect('/admin.html');
+    res.redirect('/dashboard.html');
 });
 
 // Health check endpoints
