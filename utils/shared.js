@@ -77,10 +77,16 @@ function formatearParaWhatsApp(userId) {
  * @param {Object} metadata - Metadatos adicionales
  */
 function logError(context, error, metadata = {}) {
-    logger.error(context, error instanceof Error ? error.message : error, {
-        error: error instanceof Error ? error : undefined,
-        ...metadata
-    });
+    try {
+        const logger = require('./logger');
+        logger.error(context, error instanceof Error ? error.message : error, {
+            error: error instanceof Error ? error : undefined,
+            ...metadata
+        });
+    } catch (err) {
+        // Fallback if logger is not available due to circular dependency
+        console.error(`[${context}] Error:`, error instanceof Error ? error.message : error);
+    }
 }
 
 /**
