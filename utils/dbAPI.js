@@ -18,7 +18,7 @@ console.log('DB_NAME:', process.env.DB_NAME);
 
 const dbConfig = process.env.DATABASE_URL ? {
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
     // Configuración optimizada del pool
     max: parseInt(process.env.DB_POOL_MAX) || 20,
     idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT) || 30000,
@@ -29,11 +29,7 @@ const dbConfig = process.env.DATABASE_URL ? {
     user: process.env.DB_USER || 'bot-bsl-db',
     password: process.env.DB_PASSWORD, // Required - must be set in environment
     database: process.env.DB_NAME || 'bot-bsl-db',
-    ssl: { 
-        rejectUnauthorized: false,
-        require: true,
-        ca: false
-    },
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false, // SSL configurable
     // Configuración optimizada del pool
     max: parseInt(process.env.DB_POOL_MAX) || 20,
     idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT) || 30000,
