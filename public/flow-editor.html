@@ -422,10 +422,20 @@
 <body>
     <div class="header">
         <h1><i class="fas fa-project-diagram"></i> Editor de Flujo - BSL Bot</h1>
-        <div>
-            <button class="btn btn-outline-secondary btn-sm me-2" onclick="window.location.href='/admin'">
-                <i class="fas fa-arrow-left"></i> Volver al Panel
-            </button>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <div class="dropdown">
+                <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" id="navDropdown" data-bs-toggle="dropdown">
+                    <i class="fas fa-compass"></i> Navegar
+                </button>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="/"><i class="fas fa-home"></i> Panel Principal</a></li>
+                    <li><a class="dropdown-item" href="/dashboard.html"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+                    <li><a class="dropdown-item" href="/flow-builder.html"><i class="fas fa-stream"></i> Constructor Flujo</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="/health" target="_blank"><i class="fas fa-heartbeat"></i> Health Check</a></li>
+                    <li><a class="dropdown-item" href="/metrics" target="_blank"><i class="fas fa-chart-bar"></i> Métricas</a></li>
+                </ul>
+            </div>
             <button class="btn btn-success btn-sm" onclick="deployFlow()">
                 <i class="fas fa-rocket"></i> Aplicar Cambios
             </button>

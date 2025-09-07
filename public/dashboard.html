@@ -256,6 +256,47 @@
         <div class="header">
             <h1>🤖 BSL WhatsApp Bot Dashboard</h1>
             <p>Panel de control y estadísticas en tiempo real</p>
+            
+            <!-- Navigation Buttons -->
+            <div class="nav-buttons" style="display: flex; gap: 15px; margin-top: 20px; flex-wrap: wrap;">
+                <a href="/admin-dashboard.html" class="nav-btn" style="flex: 1; min-width: 200px; padding: 15px; background: white; border: 2px solid #e0e0e0; border-radius: 10px; text-align: center; text-decoration: none; color: #333; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                    <i class="fas fa-tachometer-alt" style="font-size: 24px; color: #667eea;"></i>
+                    <div style="font-weight: 600;">Panel Principal</div>
+                    <small style="color: #666;">Dashboard completo</small>
+                </a>
+                
+                <a href="/flow-builder.html" class="nav-btn" style="flex: 1; min-width: 200px; padding: 15px; background: white; border: 2px solid #e0e0e0; border-radius: 10px; text-align: center; text-decoration: none; color: #333; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                    <i class="fas fa-stream" style="font-size: 24px; color: #667eea;"></i>
+                    <div style="font-weight: 600;">Constructor Flujo</div>
+                    <small style="color: #666;">Diseñar flujos</small>
+                </a>
+                
+                <a href="/flow-editor.html" class="nav-btn" style="flex: 1; min-width: 200px; padding: 15px; background: white; border: 2px solid #e0e0e0; border-radius: 10px; text-align: center; text-decoration: none; color: #333; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                    <i class="fas fa-edit" style="font-size: 24px; color: #667eea;"></i>
+                    <div style="font-weight: 600;">Editor Flujo</div>
+                    <small style="color: #666;">Edición visual</small>
+                </a>
+                
+                <a href="/health" class="nav-btn" style="flex: 1; min-width: 200px; padding: 15px; background: white; border: 2px solid #e0e0e0; border-radius: 10px; text-align: center; text-decoration: none; color: #333; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 8px;" target="_blank">
+                    <i class="fas fa-heartbeat" style="font-size: 24px; color: #28a745;"></i>
+                    <div style="font-weight: 600;">Health Check</div>
+                    <small style="color: #666;">Estado del sistema</small>
+                </a>
+                
+                <a href="/metrics" class="nav-btn" style="flex: 1; min-width: 200px; padding: 15px; background: white; border: 2px solid #e0e0e0; border-radius: 10px; text-align: center; text-decoration: none; color: #333; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 8px;" target="_blank">
+                    <i class="fas fa-chart-bar" style="font-size: 24px; color: #667eea;"></i>
+                    <div style="font-weight: 600;">Métricas</div>
+                    <small style="color: #666;">Análisis detallado</small>
+                </a>
+            </div>
+            
+            <style>
+                .nav-btn:hover {
+                    transform: translateY(-3px);
+                    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+                    border-color: #667eea !important;
+                }
+            </style>
         </div>
         
         <div class="stats-grid" id="statsGrid">
