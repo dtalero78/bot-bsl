@@ -198,6 +198,52 @@ async function procesarTextoMenu(message, res) {
             return res.json({ success: true, mensaje: "Bot detenido - transferido a asesor" });
         }
 
+        // 4.5 DETECCIÓN AUTOMÁTICA DE NÚMERO DE DOCUMENTO EN CUALQUIER MOMENTO
+        // Si el usuario envía un número que parece documento, procesarlo inmediatamente
+        if (esCedula(mensajeLimpio) && nivel !== 'esperando_cedula' && nivel !== 'esperando_pago') {
+            logInfo('procesarTextoMenu', 'Detectado número de documento directo', { userId, cedula: mensajeLimpio, nivelActual: nivel });
+            
+            try {
+                await enviarYGuardar(to, userId, nombre, "🔍 Detecté un número de documento. Procesando tu solicitud...", historialActualizado, nivel);
+                
+                // Intentar marcar como pagado y generar certificado
+                const resultadoPago = await marcarPagado(mensajeLimpio);
+                
+                if (resultadoPago.success) {
+                    logInfo('procesarTextoMenu', 'Pago marcado exitosamente (detección directa)', { userId, cedula: mensajeLimpio });
+                    
+                    try {
+                        const pdfUrl = await generarPdfDesdeApi2Pdf(mensajeLimpio);
+                        
+                        if (pdfUrl) {
+                            await sendPdf(to, pdfUrl, mensajeLimpio);
+                            response = `✅ *¡Pago registrado y certificado enviado!*\n\n📄 Tu certificado médico ocupacional está listo.\n\n✨ Sin marca de agua.\n\n¿Necesitas algo más?\n0️⃣ Menú principal`;
+                        } else {
+                            response = `✅ *Pago registrado exitosamente*\n\n⚠️ Hubo un problema generando el PDF. Un asesor te lo enviará pronto.\n\n0️⃣ Menú principal`;
+                        }
+                    } catch (pdfError) {
+                        logError('procesarTextoMenu', 'Error generando PDF (detección directa)', { userId, cedula: mensajeLimpio, error: pdfError });
+                        response = `✅ *Pago registrado*\n\n⚠️ No pude generar el certificado automáticamente. Un asesor te lo enviará pronto.\n\n0️⃣ Menú principal`;
+                    }
+                    
+                    // Enviar respuesta y actualizar conversación
+                    await enviarYGuardar(to, userId, nombre, response, historialActualizado, 1);
+                    
+                    return res.json({ 
+                        success: true, 
+                        respuesta: response,
+                        nivel: 1,
+                        approach: "direct-document-payment"
+                    });
+                }
+                // Si no se encontró, continuar con el flujo normal del menú
+                logInfo('procesarTextoMenu', 'Documento no encontrado en BD, continuando flujo normal', { userId, cedula: mensajeLimpio });
+            } catch (error) {
+                logError('procesarTextoMenu', 'Error en detección directa de documento', { userId, cedula: mensajeLimpio, error });
+                // Si hay error, continuar con el flujo normal
+            }
+        }
+
         let response = "";
         let nuevoNivel = nivel;
 
@@ -310,23 +356,53 @@ async function procesarTextoMenu(message, res) {
             }
             
         } else if (nivel === 'esperando_cedula') {
-            // Esperando cédula para consulta
+            // Esperando cédula para consulta o pago
             if (esCedula(mensajeLimpio)) {
                 try {
-                    await enviarYGuardar(to, userId, nombre, "🔍 Un momento, consultando tu información...", historialActualizado, nivel);
+                    await enviarYGuardar(to, userId, nombre, "🔍 Un momento, procesando tu solicitud...", historialActualizado, nivel);
                     
-                    const infoPaciente = await consultarInformacionPaciente(mensajeLimpio);
+                    // Primero intentar marcar como pagado y generar certificado
+                    logInfo('procesarTextoMenu', 'Procesando documento para pago', { userId, cedula: mensajeLimpio });
                     
-                    if (infoPaciente && infoPaciente.length > 0) {
-                        const paciente = infoPaciente[0];
-                        response = `✅ *Información de tu cita:*\n\nNombre: ${paciente.nombre}\nFecha: ${paciente.fecha}\nHora: ${paciente.hora}\nEstado: ${paciente.atendido}\n\n1️⃣ Tengo otra consulta\n0️⃣ Menú principal`;
+                    const resultadoPago = await marcarPagado(mensajeLimpio);
+                    
+                    if (resultadoPago.success) {
+                        // Si se marcó como pagado exitosamente, generar y enviar PDF
+                        logInfo('procesarTextoMenu', 'Pago marcado exitosamente, generando PDF', { userId, cedula: mensajeLimpio });
+                        
+                        try {
+                            const pdfUrl = await generarPdfDesdeApi2Pdf(mensajeLimpio);
+                            
+                            if (pdfUrl) {
+                                await sendPdf(to, pdfUrl, mensajeLimpio);
+                                response = `✅ *¡Pago registrado exitosamente!*\n\n📄 Tu certificado médico ocupacional ha sido enviado.\n\n✨ El certificado está disponible sin marca de agua.\n\n¿Necesitas algo más?\n0️⃣ Menú principal`;
+                            } else {
+                                response = `✅ *Pago registrado exitosamente*\n\n⚠️ Hubo un problema generando el PDF. Un asesor te lo enviará pronto.\n\n0️⃣ Menú principal`;
+                            }
+                        } catch (pdfError) {
+                            logError('procesarTextoMenu', 'Error generando PDF', { userId, cedula: mensajeLimpio, error: pdfError });
+                            response = `✅ *Pago registrado*\n\n⚠️ No pude generar el certificado automáticamente. Un asesor te lo enviará pronto.\n\n0️⃣ Menú principal`;
+                        }
+                        
+                        nuevoNivel = 1;
                     } else {
-                        response = `❌ No encontré información con ese documento.\n\n1️⃣ Intentar con otro documento\n2️⃣ Hablar con un asesor\n0️⃣ Menú principal`;
+                        // Si no se pudo marcar como pagado, intentar consultar información del paciente
+                        logInfo('procesarTextoMenu', 'No se encontró registro para pago, consultando información', { userId, cedula: mensajeLimpio });
+                        
+                        const infoPaciente = await consultarInformacionPaciente(mensajeLimpio);
+                        
+                        if (infoPaciente && infoPaciente.length > 0) {
+                            const paciente = infoPaciente[0];
+                            response = `📋 *Información encontrada:*\n\nNombre: ${paciente.nombre}\nFecha: ${paciente.fecha}\nHora: ${paciente.hora}\nEstado: ${paciente.atendido}\n\n${paciente.atendido === 'ATENDIDO' ? '💡 Si ya realizaste el pago, envía tu comprobante.' : '⏳ Tu cita está pendiente.'}\n\n1️⃣ Enviar comprobante\n0️⃣ Menú principal`;
+                            nuevoNivel = 'esperando_pago';
+                        } else {
+                            response = `❌ No encontré información con el documento ${mensajeLimpio}.\n\nVerifica que:\n• El número esté correcto\n• Ya hayas realizado tu examen médico\n\n1️⃣ Intentar con otro documento\n2️⃣ Hablar con un asesor\n0️⃣ Menú principal`;
+                            nuevoNivel = 6;
+                        }
                     }
-                    nuevoNivel = 6;
                 } catch (error) {
-                    logError('procesarTextoMenu', 'Error consultando paciente', { userId, error });
-                    response = `❌ Hubo un error consultando tu información. Por favor intenta más tarde.\n\n0️⃣ Menú principal`;
+                    logError('procesarTextoMenu', 'Error procesando documento', { userId, cedula: mensajeLimpio, error });
+                    response = `❌ Hubo un error procesando tu solicitud. Por favor intenta más tarde.\n\n0️⃣ Menú principal`;
                     nuevoNivel = 1;
                 }
             } else if (mensajeLimpio === "4") {
