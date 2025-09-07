@@ -1,6 +1,10 @@
 const fs = require('fs');
 const path = require('path');
-const { generarTimestamp } = require('./shared');
+
+// Función local para evitar dependencia circular
+function generarTimestamp() {
+    return new Date().toISOString();
+}
 
 /**
  * Sistema de logging estructurado con diferentes niveles
