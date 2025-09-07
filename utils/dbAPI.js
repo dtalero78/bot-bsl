@@ -81,6 +81,17 @@ async function initializeDatabase() {
             CREATE INDEX IF NOT EXISTS idx_conversaciones_updated_at ON conversaciones(updated_at);
         `);
         
+        // Agregar campo nivel si no existe (para migración)
+        try {
+            await pool.query(`
+                ALTER TABLE conversaciones 
+                ADD COLUMN IF NOT EXISTS nivel VARCHAR(50) DEFAULT '0'
+            `);
+        } catch (error) {
+            // Ignorar si la columna ya existe o hay problemas con la migración
+            console.log('Campo nivel ya existe o error en migración:', error.message);
+        }
+        
         // Crear tabla pacientes con índices
         await pool.query(`
             CREATE TABLE IF NOT EXISTS pacientes (
@@ -136,21 +147,22 @@ async function initializeDatabase() {
 }
 
 // Guardar conversación
-async function guardarConversacionEnDB({ userId, nombre, mensajes, fase = "inicial" }) {
+async function guardarConversacionEnDB({ userId, nombre, mensajes, fase = "inicial", nivel = 0 }) {
     try {
         const query = `
-            INSERT INTO conversaciones (user_id, nombre, mensajes, fase, updated_at)
-            VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+            INSERT INTO conversaciones (user_id, nombre, mensajes, fase, nivel, updated_at)
+            VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
             ON CONFLICT (user_id) 
             DO UPDATE SET 
                 nombre = $2,
                 mensajes = $3,
                 fase = $4,
+                nivel = $5,
                 updated_at = CURRENT_TIMESTAMP
         `;
         
-        await pool.query(query, [userId, nombre, JSON.stringify(mensajes), fase]);
-        console.log("✅ Conversación guardada en PostgreSQL:", { userId, fase });
+        await pool.query(query, [userId, nombre, JSON.stringify(mensajes), fase, String(nivel)]);
+        console.log("✅ Conversación guardada en PostgreSQL:", { userId, fase, nivel });
     } catch (err) {
         console.error("❌ Error guardando conversación en PostgreSQL:", err);
     }
@@ -161,14 +173,14 @@ async function obtenerConversacionDeDB(userId, limit = 50) {
     try {
         // Query optimizada usando índice idx_conversaciones_user_id
         const query = `
-            SELECT mensajes, observaciones, fase, updated_at 
+            SELECT mensajes, observaciones, fase, nivel, updated_at 
             FROM conversaciones 
             WHERE user_id = $1
         `;
         const result = await pool.query(query, [userId]);
         
         if (result.rows.length === 0) {
-            return { mensajes: [], observaciones: "", fase: "inicial", totalMensajes: 0 };
+            return { mensajes: [], observaciones: "", fase: "inicial", nivel: 0, totalMensajes: 0 };
         }
         
         const row = result.rows[0];
@@ -183,13 +195,14 @@ async function obtenerConversacionDeDB(userId, limit = 50) {
             mensajes: mensajesPaginados,
             observaciones: row.observaciones || "",
             fase: row.fase || "inicial",
+            nivel: parseInt(row.nivel) || 0,
             totalMensajes: mensajesCompletos.length,
             truncated: mensajesCompletos.length > limit,
             ultimaActualizacion: row.updated_at
         };
     } catch (err) {
         console.error("❌ Error obteniendo conversación de PostgreSQL:", err);
-        return { mensajes: [], observaciones: "", fase: "inicial", totalMensajes: 0 };
+        return { mensajes: [], observaciones: "", fase: "inicial", nivel: 0, totalMensajes: 0 };
     }
 }
 

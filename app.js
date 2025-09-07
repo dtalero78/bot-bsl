@@ -56,7 +56,8 @@ app.use(globalRateLimiter.middleware());
 const { manejarControlBot } = require('./handlers/controlBot');
 const { procesarImagen } = require('./handlers/procesarImagen');
 // Importar versión simplificada (solo un prompt)
-const { procesarTextoSimple } = require('./handlers/procesarTextoSimple');
+const { procesarTextoMenu } = require('./handlers/procesarTextoMenu');
+// const { procesarTextoSimple } = require('./handlers/procesarTextoSimple'); // Versión IA pura comentada
 // const { procesarTexto } = require('./handlers/procesarTexto'); // Versión compleja comentada
 const { guardarConversacionEnDB, obtenerConversacionDeDB } = require('./utils/dbAPI');
 const { obtenerTextoMensaje, extraerUserId, limpiarDuplicados, logInfo, logError } = require('./utils/shared');
@@ -157,7 +158,7 @@ app.post('/soporte', async (req, res) => {
             }
             // Texto recibido
             if (message.type === "text") {
-                return await procesarTextoSimple(message, res);
+                return await procesarTextoMenu(message, res);
             }
         }
 
