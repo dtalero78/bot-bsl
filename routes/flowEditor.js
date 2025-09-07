@@ -185,14 +185,90 @@ function getDefaultFlow() {
                 data: {
                     title: 'Menú Post-Agendamiento',
                     options: [
-                        { text: '¿A qué hora quedó mi cita?', next: null },
-                        { text: 'Problemas con la aplicación', next: null },
-                        { text: 'No me funciona el formulario', next: null },
-                        { text: 'Se me cerró la aplicación', next: null },
+                        { text: '¿A qué hora quedó mi cita?', next: 'node-check-appointment' },
+                        { text: 'Problemas con la aplicación', next: 'node-app-problems' },
+                        { text: 'No me funciona el formulario', next: 'node-form-help' },
+                        { text: 'Se me cerró la aplicación', next: 'node-app-closed' },
                         { text: 'Hablar con un asesor', next: 'node-transfer' }
                     ],
                     icon: 'fa-list',
                     color: 'purple'
+                }
+            },
+            {
+                id: 'node-check-appointment',
+                type: 'input',
+                x: 1000,
+                y: 100,
+                data: {
+                    title: 'Solicitar Documento para Cita',
+                    prompt: 'Para consultar el horario de tu cita, necesito tu número de documento. Por favor escríbelo (solo números, sin puntos).',
+                    validation: 'cedula',
+                    icon: 'fa-keyboard',
+                    color: 'info'
+                }
+            },
+            {
+                id: 'node-appointment-info',
+                type: 'api',
+                x: 1200,
+                y: 100,
+                data: {
+                    title: 'Consultar Información Cita',
+                    endpoint: 'consultarInformacionPaciente',
+                    method: 'GET',
+                    icon: 'fa-database',
+                    color: 'secondary'
+                }
+            },
+            {
+                id: 'node-app-problems',
+                type: 'message',
+                x: 1000,
+                y: 150,
+                data: {
+                    title: 'Ayuda Problemas App',
+                    text: 'Para problemas técnicos:\n\n✅ Recarga la página\n✅ Limpia el caché\n✅ Usa Chrome o Safari actualizados\n\n¿Se solucionó?',
+                    icon: 'fa-comment',
+                    color: 'primary'
+                }
+            },
+            {
+                id: 'node-form-help',
+                type: 'message',
+                x: 1000,
+                y: 200,
+                data: {
+                    title: 'Ayuda Formulario',
+                    text: 'Si el formulario no funciona:\n\n1️⃣ Verifica tu conexión\n2️⃣ Completa todos los campos\n3️⃣ Revisa el formato de datos\n\n¿Necesitas más ayuda?',
+                    icon: 'fa-comment',
+                    color: 'primary'
+                }
+            },
+            {
+                id: 'node-app-closed',
+                type: 'message',
+                x: 1000,
+                y: 250,
+                data: {
+                    title: 'App Se Cerró',
+                    text: 'Si se cerró:\n\n📱 Vuelve al link\n💾 Tus datos se guardan automáticamente\n🔄 Continúa donde quedaste\n\n¿Pudiste ingresar?',
+                    icon: 'fa-comment',
+                    color: 'primary'
+                }
+            },
+            {
+                id: 'node-help-followup',
+                type: 'condition',
+                x: 1200,
+                y: 200,
+                data: {
+                    title: '¿Se Solucionó?',
+                    variable: 'userResponse',
+                    operator: 'contains',
+                    value: 'sí|si|ok|correcto|solucionó|funciona',
+                    icon: 'fa-code-branch',
+                    color: 'warning'
                 }
             },
             {
@@ -217,13 +293,37 @@ function getDefaultFlow() {
                 data: {
                     title: 'Revisión Certificado',
                     options: [
-                        { text: 'Sí, está correcto', next: 'node-payment' },
+                        { text: 'Sí, está correcto', next: 'node-payment-info' },
                         { text: 'Hay un error que corregir', next: 'node-transfer' },
-                        { text: 'No he podido revisarlo', next: null },
+                        { text: 'No he podido revisarlo', next: 'node-review-help' },
                         { text: 'Hablar con un asesor', next: 'node-transfer' }
                     ],
                     icon: 'fa-list',
                     color: 'purple'
+                }
+            },
+            {
+                id: 'node-payment-info',
+                type: 'message',
+                x: 1200,
+                y: 350,
+                data: {
+                    title: 'Información de Pago',
+                    text: '💳 **Datos para el pago:**\n\n**Bancolombia:** Ahorros 44291192456 (cédula 79981585)\n**Daviplata:** 3014400818 (Mar Rea)\n**Nequi:** 3008021701 (Dan Tal)\n**También:** Transfiya\n\nEnvía SOLO tu comprobante de pago por aquí',
+                    icon: 'fa-comment',
+                    color: 'primary'
+                }
+            },
+            {
+                id: 'node-review-help',
+                type: 'message',
+                x: 1200,
+                y: 450,
+                data: {
+                    title: 'Ayuda Revisar Certificado',
+                    text: 'Para revisar tu certificado:\n\n1️⃣ Verifica tu email (también spam)\n2️⃣ Descarga el PDF\n3️⃣ Revisa tus datos\n\n¿Lo encontraste?',
+                    icon: 'fa-comment',
+                    color: 'primary'
                 }
             },
             {
@@ -274,18 +374,48 @@ function getDefaultFlow() {
             }
         ],
         connections: [
+            // Flujo principal inicial
             { from: 'node-start', to: 'node-greeting' },
             { from: 'node-greeting', to: 'node-ai-response' },
             { from: 'node-greeting', to: 'node-image-process' },
             { from: 'node-ai-response', to: 'node-check-schedule' },
             { from: 'node-image-process', to: 'node-check-schedule' },
+            
+            // Ramificación de agendamiento
             { from: 'node-check-schedule', to: 'node-post-schedule-menu' },
             { from: 'node-check-schedule', to: 'node-check-review' },
+            
+            // Opciones del menú post-agendamiento
+            { from: 'node-post-schedule-menu', to: 'node-check-appointment' },
+            { from: 'node-post-schedule-menu', to: 'node-app-problems' },
+            { from: 'node-post-schedule-menu', to: 'node-form-help' },
+            { from: 'node-post-schedule-menu', to: 'node-app-closed' },
+            { from: 'node-post-schedule-menu', to: 'node-transfer' },
+            
+            // Flujo de consulta de cita
+            { from: 'node-check-appointment', to: 'node-appointment-info' },
+            { from: 'node-appointment-info', to: 'node-end' },
+            
+            // Flujo de ayuda técnica
+            { from: 'node-app-problems', to: 'node-help-followup' },
+            { from: 'node-form-help', to: 'node-help-followup' },
+            { from: 'node-app-closed', to: 'node-help-followup' },
+            { from: 'node-help-followup', to: 'node-end' }, // Sí se solucionó
+            { from: 'node-help-followup', to: 'node-transfer' }, // No se solucionó
+            
+            // Flujo de revisión de certificado
             { from: 'node-check-review', to: 'node-review-menu' },
-            { from: 'node-review-menu', to: 'node-payment' },
+            { from: 'node-review-menu', to: 'node-payment-info' },
+            { from: 'node-review-menu', to: 'node-transfer' },
+            { from: 'node-review-menu', to: 'node-review-help' },
+            
+            // Flujo de pago
+            { from: 'node-payment-info', to: 'node-payment' },
+            { from: 'node-review-help', to: 'node-help-followup' },
             { from: 'node-payment', to: 'node-pdf' },
             { from: 'node-pdf', to: 'node-end' },
-            { from: 'node-post-schedule-menu', to: 'node-transfer' },
+            
+            // Flujo de transferencia
             { from: 'node-transfer', to: 'node-end' }
         ],
         metadata: {
