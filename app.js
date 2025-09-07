@@ -301,6 +301,57 @@ app.post('/api/generarCertificado', async (req, res) => {
     }
 });
 
+// API endpoint para verificar estado de usuario
+app.get('/api/usuario/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        const { obtenerConversacionDeDB } = require('./utils/dbAPI');
+        const conversacion = await obtenerConversacionDeDB(userId);
+        
+        const MessageService = require('./services/messageService');
+        const estaBloqueado = MessageService.estaUsuarioBloqueado(conversacion.observaciones);
+        
+        return res.json({
+            success: true,
+            userId: userId,
+            observaciones: conversacion.observaciones || "",
+            bloqueado: estaBloqueado,
+            nivel: conversacion.nivel || 0,
+            ultimoMensaje: conversacion.mensajes && conversacion.mensajes.length > 0 
+                ? conversacion.mensajes[conversacion.mensajes.length - 1] 
+                : null
+        });
+        
+    } catch (error) {
+        logError('api/usuario', error, { userId: req.params.userId });
+        return res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// API endpoint para desbloquear usuario
+app.post('/api/desbloquear/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        const { actualizarObservaciones } = require('./utils/dbAPI');
+        
+        // Limpiar observaciones de STOP
+        await actualizarObservaciones(userId, "");
+        
+        logInfo('api/desbloquear', 'Usuario desbloqueado', { userId });
+        
+        return res.json({
+            success: true,
+            mensaje: `Usuario ${userId} desbloqueado exitosamente`
+        });
+        
+    } catch (error) {
+        logError('api/desbloquear', error, { userId: req.params.userId });
+        return res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.post('/api/guardarMensaje', async (req, res) => {
     try {
         const { userId, nombre, mensaje, from = "sistema", timestamp } = req.body;
