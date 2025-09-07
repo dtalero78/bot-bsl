@@ -375,7 +375,8 @@ router.get('/conversations', async (req, res) => {
 router.get('/conversations/:userId', async (req, res) => {
     try {
         const userId = extraerUserId(req.params.userId);
-        const conversation = await obtenerConversacionDeDB(userId);
+        // Get ALL messages without limit (-1 means no limit)
+        const conversation = await obtenerConversacionDeDB(userId, -1);
         
         if (!conversation || conversation.mensajes.length === 0) {
             return res.status(404).json({
@@ -388,7 +389,9 @@ router.get('/conversations/:userId', async (req, res) => {
             success: true,
             conversation: {
                 userId,
-                ...conversation
+                ...conversation,
+                totalMensajes: conversation.mensajes.length,
+                ultimaActualizacion: conversation.updated_at || new Date().toISOString()
             }
         });
         

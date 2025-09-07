@@ -113,17 +113,30 @@ async function procesarTextoSimple(message, res) {
             return res.json({ success: true, mensaje: "Usuario marcado como STOP automáticamente" });
         }
 
-        // 5. RESPUESTA SIMPLE: Solo GPT-4 con el prompt institucional
+        // 5. Verificar si el último mensaje del sistema ya es una respuesta a esta pregunta
+        const ultimosSistema = historialActualizado.filter(m => m.from === "sistema");
+        if (ultimosSistema.length > 0) {
+            const ultimoMensajeSistema = ultimosSistema[ultimosSistema.length - 1];
+            // Si el último mensaje del sistema contiene las opciones y el usuario ya eligió
+            if (ultimoMensajeSistema.mensaje.includes("¿Cuál te interesa más?") && 
+                (mensajeLimpio.toLowerCase().includes("virtual") || 
+                 mensajeLimpio.toLowerCase().includes("presencial") ||
+                 mensajeLimpio === "1" || mensajeLimpio === "2")) {
+                logInfo('procesarTextoSimple', 'Usuario respondió a opciones existentes', { userId, respuesta: mensajeLimpio });
+            }
+        }
+
+        // 6. RESPUESTA SIMPLE: Solo GPT-4 con el prompt institucional
         logInfo('procesarTextoSimple', 'Generando respuesta con GPT-4', { userId });
         
         try {
             const openaiService = getOpenAIService();
             
-            // Preparar mensajes para OpenAI
+            // Preparar mensajes para OpenAI con contexto completo
             const mensajesParaOpenAI = [
                 { role: 'system', content: promptInstitucional },
-                // Incluir últimos 10 mensajes para contexto
-                ...historialActualizado.slice(-10).map(m => ({
+                // Incluir últimos 15 mensajes para mejor contexto
+                ...historialActualizado.slice(-15).map(m => ({
                     role: m.from === "usuario" ? "user" : "assistant",
                     content: m.mensaje
                 })),
@@ -135,7 +148,37 @@ async function procesarTextoSimple(message, res) {
                 temperature: 0.7
             });
 
-            // 6. Enviar respuesta y guardar
+            // 6. Verificar que no estamos enviando un mensaje duplicado
+            const ultimoMensajeSistema = historialActualizado
+                .filter(m => m.from === "sistema")
+                .pop();
+            
+            if (ultimoMensajeSistema && ultimoMensajeSistema.mensaje === respuestaBot) {
+                logInfo('procesarTextoSimple', 'Evitando envío de mensaje duplicado', { 
+                    userId, 
+                    mensaje: respuestaBot.substring(0, 50) 
+                });
+                
+                // Generar una respuesta alternativa si es duplicado
+                const respuestaAlternativa = "¿En qué más puedo ayudarte con tu examen médico ocupacional?";
+                
+                await MessageService.enviarMensajeYGuardar({
+                    to,
+                    userId,
+                    nombre,
+                    texto: respuestaAlternativa,
+                    historial: historialActualizado,
+                    remitente: "sistema"
+                });
+                
+                return res.json({ 
+                    success: true, 
+                    respuesta: respuestaAlternativa,
+                    approach: "single-prompt-deduplicated"
+                });
+            }
+            
+            // Enviar respuesta normal si no es duplicado
             await MessageService.enviarMensajeYGuardar({
                 to,
                 userId,
