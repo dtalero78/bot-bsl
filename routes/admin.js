@@ -278,21 +278,30 @@ router.get('/dashboard', async (req, res) => {
             message: 'Using simplified dashboard due to database performance'
         };
         
-        // Intentar una query simple con timeout corto
+        // Intentar queries simples con timeout corto
         const timeoutPromise = new Promise((resolve) => {
             setTimeout(() => resolve(null), 2000);
         });
         
-        const simpleQuery = pool.query('SELECT COUNT(*) as total FROM conversaciones LIMIT 1');
+        // Query para total y bloqueadas
+        const queries = pool.query(`
+            SELECT 
+                COUNT(*) as total,
+                COUNT(CASE WHEN observaciones = 'stop' THEN 1 END) as bloqueadas,
+                COUNT(CASE WHEN updated_at > NOW() - INTERVAL '24 hours' THEN 1 END) as activas24h
+            FROM conversaciones
+        `);
         
-        const result = await Promise.race([simpleQuery, timeoutPromise]).catch(err => {
+        const result = await Promise.race([queries, timeoutPromise]).catch(err => {
             logger.error('AdminRoute', 'Simple query failed', { error: err.message });
             return null;
         });
         
-        if (result && result.rows) {
-            dashboard.conversaciones.total = result.rows[0]?.total || 0;
-            dashboard.status = 'partial';
+        if (result && result.rows && result.rows[0]) {
+            dashboard.conversaciones.total = parseInt(result.rows[0].total) || 0;
+            dashboard.conversaciones.bloqueadas = parseInt(result.rows[0].bloqueadas) || 0;
+            dashboard.conversaciones.activas24h = parseInt(result.rows[0].activas24h) || 0;
+            dashboard.status = 'complete';
         }
         
         res.json({ success: true, dashboard });
