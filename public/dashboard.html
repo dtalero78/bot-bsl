@@ -766,29 +766,44 @@
         
         // Función para ver conversación completa
         async function viewConversation(userId, userName) {
+            console.log('Cargando conversación para:', userId, userName);
+            
             try {
+                const url = `/api/admin/conversations/${userId}`;
+                console.log('Fetching URL:', url);
+                console.log('Using token:', API_TOKEN ? 'Token available' : 'No token');
+                
                 // Obtener la conversación completa
-                const response = await fetch(`/api/admin/conversations/${userId}`, {
+                const response = await fetch(url, {
                     headers: {
                         'Authorization': `Bearer ${API_TOKEN}`
                     }
                 });
                 
+                console.log('Response status:', response.status);
+                console.log('Response ok:', response.ok);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const data = await response.json();
+                console.log('Response data:', data);
                 
                 if (data.success && data.conversation) {
                     displayConversationModal(data.conversation, userName);
                 } else {
+                    console.error('API error:', data);
                     alert(`❌ Error: ${data.error || 'No se pudo cargar la conversación'}`);
                 }
             } catch (error) {
                 console.error('Error cargando conversación:', error);
-                alert('❌ Error al cargar la conversación');
+                alert(`❌ Error al cargar la conversación: ${error.message}`);
             }
         }
         
         function displayConversationModal(conversation, userName) {
-            const modal = new bootstrap.Modal(document.getElementById('conversationModal'));
+            const modalElement = document.getElementById('conversationModal');
             const modalTitle = document.getElementById('conversationModalLabel');
             const conversationContent = document.getElementById('conversationContent');
             
@@ -871,6 +886,9 @@
             }
             
             conversationContent.innerHTML = html;
+            
+            // Mostrar modal usando Bootstrap 5
+            const modal = new bootstrap.Modal(modalElement);
             modal.show();
         }
         
@@ -1022,6 +1040,10 @@
                 alert('Error al desbloquear usuario');
             }
         }
+        
+        // Hacer funciones globales para onclick handlers
+        window.viewConversation = viewConversation;
+        window.clearConversationHistory = clearConversationHistory;
     </script>
     
     <!-- Modal para ver conversación -->
