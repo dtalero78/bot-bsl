@@ -493,6 +493,72 @@ router.post('/test-whatsapp', async (req, res) => {
 });
 
 /**
+ * Test OpenAI API key
+ */
+router.post('/test-openai', async (req, res) => {
+    try {
+        const { prompt = "Di 'Hola, funciono correctamente'" } = req.body;
+        
+        // Probar la API de OpenAI
+        const openaiUrl = "https://api.openai.com/v1/chat/completions";
+        const response = await fetch(openaiUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${process.env.OPENAI_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: "gpt-4o",
+                messages: [
+                    { role: "system", content: "Eres un asistente de prueba" },
+                    { role: "user", content: prompt }
+                ],
+                max_tokens: 100,
+                temperature: 0.7
+            })
+        });
+        
+        const result = await response.json();
+        
+        logger.info('AdminRoute', 'OpenAI test', { status: response.status });
+        
+        if (response.ok) {
+            res.json({
+                success: true,
+                status: response.status,
+                message: 'OpenAI funciona correctamente',
+                response: result.choices?.[0]?.message?.content || 'Sin respuesta',
+                model: result.model,
+                usage: result.usage,
+                openai_configured: !!process.env.OPENAI_KEY
+            });
+        } else {
+            res.json({
+                success: false,
+                status: response.status,
+                error: result.error || result,
+                message: 'Error con OpenAI API',
+                openai_configured: !!process.env.OPENAI_KEY,
+                possible_issues: [
+                    'API key inválida o expirada',
+                    'Límite de cuota excedido',
+                    'Modelo no disponible',
+                    'Error en la configuración'
+                ]
+            });
+        }
+        
+    } catch (error) {
+        logger.error('AdminRoute', 'Error testing OpenAI', { error });
+        res.status(500).json({ 
+            success: false, 
+            error: error.message,
+            openai_configured: !!process.env.OPENAI_KEY
+        });
+    }
+});
+
+/**
  * Obtener todos los usuarios bloqueados
  */
 router.get('/blocked-users', async (req, res) => {
