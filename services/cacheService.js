@@ -16,39 +16,10 @@ class CacheService {
     }
     
     async initializeRedis() {
-        try {
-            // Configuración de Redis con fallback graceful
-            const redisConfig = {
-                url: process.env.REDIS_URL || 'redis://localhost:6379',
-                retry_strategy: (times) => {
-                    if (times > 3) return null; // Detener después de 3 intentos
-                    return Math.min(times * 50, 2000);
-                }
-            };
-            
-            this.client = redis.createClient(redisConfig);
-            
-            this.client.on('connect', () => {
-                this.isConnected = true;
-                logInfo('CacheService', 'Conectado a Redis exitosamente');
-            });
-            
-            this.client.on('error', (error) => {
-                this.isConnected = false;
-                logError('CacheService', 'Error de conexión Redis - Continuando sin caché', { error });
-            });
-            
-            this.client.on('end', () => {
-                this.isConnected = false;
-                logInfo('CacheService', 'Conexión Redis cerrada');
-            });
-            
-            await this.client.connect();
-            
-        } catch (error) {
-            this.isConnected = false;
-            logError('CacheService', 'No se pudo conectar a Redis - Continuando sin caché', { error });
-        }
+        // Redis desactivado - operando sin caché
+        this.isConnected = false;
+        this.client = null;
+        logInfo('CacheService', 'Redis desactivado - operando sin caché');
     }
     
     /**
