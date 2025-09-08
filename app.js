@@ -81,8 +81,8 @@ function identificarActor(message) {
 }
 
 
-// ENDPOINT ULTRA SIMPLE PARA IMÁGENES
-app.post('/webhook-imagenes', async (req, res) => {
+// UN SOLO WEBHOOK PARA TODO - ULTRA SIMPLE
+app.post('/webhook-pago', async (req, res) => {
     try {
         const body = req.body;
         if (!body || !body.messages || !Array.isArray(body.messages)) {
@@ -91,36 +91,27 @@ app.post('/webhook-imagenes', async (req, res) => {
         
         const message = body.messages[0];
         
-        if (message.type === "image" && message.from !== BOT_NUMBER) {
-            const { procesarImagen } = require('./handlers/pagoUltraSimple');
+        // Si es del bot, ignorar
+        if (message.from === BOT_NUMBER) {
+            return res.json({ success: true });
+        }
+        
+        const { procesarImagen, procesarTexto } = require('./handlers/pagoUltraSimple');
+        
+        // IMAGEN -> Validar con OpenAI y pedir documento
+        if (message.type === "image") {
             return await procesarImagen(message, res);
         }
         
-        return res.json({ success: true });
-    } catch (error) {
-        logError('app.js', error, { endpoint: '/webhook-imagenes' });
-        return res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// ENDPOINT ULTRA SIMPLE PARA TEXTO (CÉDULAS)
-app.post('/webhook-texto', async (req, res) => {
-    try {
-        const body = req.body;
-        if (!body || !body.messages || !Array.isArray(body.messages)) {
-            return res.status(400).json({ success: false, error: "No hay mensajes" });
-        }
-        
-        const message = body.messages[0];
-        
-        if (message.type === "text" && message.from !== BOT_NUMBER) {
-            const { procesarTexto } = require('./handlers/pagoUltraSimple');
+        // TEXTO -> Si es cédula, procesar pago inmediatamente
+        if (message.type === "text") {
             return await procesarTexto(message, res);
         }
         
         return res.json({ success: true });
+        
     } catch (error) {
-        logError('app.js', error, { endpoint: '/webhook-texto' });
+        logError('app.js', error, { endpoint: '/webhook-pago' });
         return res.status(500).json({ success: false, error: error.message });
     }
 });
