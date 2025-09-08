@@ -18,7 +18,7 @@ const ESTADO_INICIAL = 'inicial';
 const ESTADO_ESPERANDO_DOCUMENTO = 'esperando_documento';
 
 /**
- * Procesar imagen - CUALQUIER imagen
+ * Procesar imagen - VALIDAR que sea comprobante de pago con OpenAI
  */
 async function procesarImagenSimple(message, res) {
     const from = message.from;
@@ -28,18 +28,50 @@ async function procesarImagenSimple(message, res) {
     try {
         logInfo('procesarPagoSimple', 'Imagen recibida', { userId });
         
-        // 1. Enviar mensaje pidiendo documento
-        const mensaje = `📸 *Imagen recibida*\n\nPara procesar tu pago y generar el certificado, escribe tu *número de documento* (solo números, sin puntos).\n\nEjemplo: 1234567890`;
+        // 1. Descargar imagen
+        const imageId = message.image?.id;
+        const mimeType = message.image?.mime_type || "image/jpeg";
+        const urlImg = `https://gate.whapi.cloud/media/${imageId}`;
+        
+        const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+        
+        const whapiRes = await fetch(urlImg, {
+            method: 'GET',
+            headers: { "Authorization": `Bearer ${config.apis.whapi.key}` }
+        });
+
+        if (!whapiRes.ok) {
+            throw new Error(`Error descargando imagen: ${whapiRes.status}`);
+        }
+
+        const arrayBuffer = await whapiRes.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const base64Image = buffer.toString('base64');
+        
+        // 2. Validar con OpenAI que sea comprobante de pago
+        const { getOpenAIService } = require('../services/openaiService');
+        const openaiService = getOpenAIService();
+        
+        const clasificacion = await openaiService.clasificarImagen(base64Image, mimeType);
+        
+        if (clasificacion !== "comprobante_pago") {
+            const mensaje = `❌ La imagen no parece ser un comprobante de pago válido.\n\nPor favor envía una imagen clara de tu:\n• Comprobante bancario\n• Transferencia\n• Recibo de pago`;
+            await sendMessage(from, mensaje);
+            return res.json({ success: true, mensaje: "Imagen no válida" });
+        }
+        
+        // 3. Si es comprobante válido, pedir documento
+        const mensaje = `✅ *Comprobante de pago recibido*\n\nPara completar el proceso y generar tu certificado, escribe tu *número de documento* (solo números, sin puntos).\n\nEjemplo: 1234567890`;
         
         await sendMessage(from, mensaje);
         
-        // 2. Guardar estado
+        // 4. Guardar estado
         const conversacion = await obtenerConversacionDeDB(userId);
         const historial = [
             ...conversacion.mensajes,
             {
                 from: "usuario",
-                mensaje: "📷 (imagen enviada)",
+                mensaje: "📷 (comprobante de pago)",
                 timestamp: new Date().toISOString()
             },
             {
@@ -56,12 +88,14 @@ async function procesarImagenSimple(message, res) {
             nivel: ESTADO_ESPERANDO_DOCUMENTO
         });
         
-        logInfo('procesarPagoSimple', 'Imagen procesada - esperando documento', { userId });
+        logInfo('procesarPagoSimple', 'Comprobante validado - esperando documento', { userId });
         
-        return res.json({ success: true, mensaje: "Imagen procesada" });
+        return res.json({ success: true, mensaje: "Comprobante validado" });
         
     } catch (error) {
         logError('procesarPagoSimple', 'Error procesando imagen', { userId, error });
+        const mensajeError = `❌ No pude procesar tu imagen. Por favor intenta de nuevo con una imagen más clara.`;
+        await sendMessage(from, mensajeError);
         return res.status(500).json({ success: false, error: error.message });
     }
 }
