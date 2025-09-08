@@ -50,13 +50,13 @@ async function procesarImagen(message, res) {
         const clasificacion = await openaiService.clasificarImagen(base64Image, mimeType);
         
         if (clasificacion !== "comprobante_pago") {
-            const mensaje = `❌ La imagen no es un comprobante de pago válido.\n\nPor favor envía:\n• Comprobante bancario\n• Transferencia\n• Recibo de pago`;
+            const mensaje = `...transfiriendo con asesor`;
             await sendMessage(from, mensaje);
             return res.json({ success: true, mensaje: "Imagen rechazada" });
         }
         
         // 3. Si SÍ es comprobante válido, pedir documento
-        const mensaje = `✅ *Comprobante de pago válido*\n\nEscribe tu *número de documento* para completar:\n\nEjemplo: 1234567890`;
+        const mensaje = `✅ Escribe tu número de documento *solo los números*`;
         
         await sendMessage(from, mensaje);
         
