@@ -5,6 +5,11 @@ const { sendPdf } = require('../utils/pdf');
 const { esCedula } = require('../utils/validaciones');
 const { extraerUserId, logInfo, logError } = require('../utils/shared');
 const { config } = require('../config/environment');
+const { 
+    guardarEstadoPagoTemporal, 
+    verificarEstadoPagoTemporal, 
+    limpiarEstadoPagoTemporal 
+} = require('../utils/dbAPI');
 
 /**
  * SÚPER ULTRA SIMPLE:
@@ -55,7 +60,10 @@ async function procesarImagen(message, res) {
             return res.json({ success: true, mensaje: "Imagen rechazada" });
         }
         
-        // 3. Si SÍ es comprobante válido, pedir documento
+        // 3. Si SÍ es comprobante válido, guardar estado temporal
+        await guardarEstadoPagoTemporal(userId);
+        
+        // 4. Pedir documento
         const mensaje = `✅ Escribe tu número de documento *solo los números*`;
         
         await sendMessage(from, mensaje);
@@ -80,9 +88,20 @@ async function procesarTexto(message, res) {
     try {
         logInfo('pagoUltraSimple', 'Texto recibido', { userId, texto });
         
-        // Si es una cédula, procesar pago inmediatamente
+        // Si es una cédula, verificar estado y procesar pago
         if (esCedula(texto)) {
-            logInfo('pagoUltraSimple', 'Procesando cédula como pago', { userId, cedula: texto });
+            logInfo('pagoUltraSimple', 'Cédula detectada, verificando estado', { userId, cedula: texto });
+            
+            // Verificar si hay un comprobante validado previamente
+            const estadoTemporal = await verificarEstadoPagoTemporal(userId);
+            
+            if (!estadoTemporal.validado) {
+                logInfo('pagoUltraSimple', 'Sin comprobante previo', { userId });
+                await sendMessage(from, `❌ Primero debes enviar una foto del comprobante de pago.\n\n📸 Por favor, envía la imagen del comprobante.`);
+                return res.json({ success: false, mensaje: "Sin comprobante previo" });
+            }
+            
+            logInfo('pagoUltraSimple', 'Comprobante validado, procesando pago', { userId, cedula: texto });
             
             await sendMessage(from, `⏳ Procesando pago para documento ${texto}...`);
             
@@ -91,8 +110,12 @@ async function procesarTexto(message, res) {
             
             if (!resultadoPago.success) {
                 await sendMessage(from, `❌ No encontré un registro con el documento ${texto}.\n\nVerifica que el número esté correcto y que hayas realizado tu examen médico.`);
+                // Mantener el estado temporal para que pueda reintentar con otro documento
                 return res.json({ success: false });
             }
+            
+            // Limpiar estado temporal después de procesar exitosamente
+            await limpiarEstadoPagoTemporal(userId);
             
             // Generar y enviar PDF
             try {

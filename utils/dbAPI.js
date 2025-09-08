@@ -114,6 +114,26 @@ async function initializeDatabase() {
             CREATE INDEX IF NOT EXISTS idx_pacientes_pagado ON pacientes(pagado);
         `);
         
+        // Crear tabla para estados temporales de pago
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS estados_pago_temporal (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR(50) UNIQUE NOT NULL,
+                comprobante_validado BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '30 minutes')
+            )
+        `);
+        
+        // Índice para búsquedas rápidas y limpieza de expirados
+        await pool.query(`
+            CREATE INDEX IF NOT EXISTS idx_estados_pago_user_id ON estados_pago_temporal(user_id);
+        `);
+        
+        await pool.query(`
+            CREATE INDEX IF NOT EXISTS idx_estados_pago_expires_at ON estados_pago_temporal(expires_at);
+        `);
+
         // Función para actualizar timestamp automáticamente
         await pool.query(`
             CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -286,6 +306,85 @@ async function marcarPagado(cedula) {
     }
 }
 
+// Guardar estado temporal cuando se valida un comprobante
+async function guardarEstadoPagoTemporal(userId) {
+    try {
+        // Limpiar estados expirados antes de guardar uno nuevo
+        await limpiarEstadosExpirados();
+        
+        const query = `
+            INSERT INTO estados_pago_temporal (user_id, comprobante_validado, created_at, expires_at)
+            VALUES ($1, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '30 minutes')
+            ON CONFLICT (user_id) 
+            DO UPDATE SET 
+                comprobante_validado = TRUE,
+                created_at = CURRENT_TIMESTAMP,
+                expires_at = CURRENT_TIMESTAMP + INTERVAL '30 minutes'
+        `;
+        
+        await pool.query(query, [userId]);
+        console.log("✅ Estado de pago temporal guardado para:", userId);
+        return { success: true };
+    } catch (err) {
+        console.error("❌ Error guardando estado temporal:", err);
+        return { success: false, error: err.message };
+    }
+}
+
+// Verificar si existe un estado temporal válido
+async function verificarEstadoPagoTemporal(userId) {
+    try {
+        const query = `
+            SELECT comprobante_validado 
+            FROM estados_pago_temporal 
+            WHERE user_id = $1 
+            AND comprobante_validado = TRUE
+            AND expires_at > CURRENT_TIMESTAMP
+        `;
+        
+        const result = await pool.query(query, [userId]);
+        
+        if (result.rows.length > 0) {
+            console.log("✅ Estado temporal válido encontrado para:", userId);
+            return { success: true, validado: true };
+        }
+        
+        console.log("⚠️ No hay estado temporal válido para:", userId);
+        return { success: true, validado: false };
+    } catch (err) {
+        console.error("❌ Error verificando estado temporal:", err);
+        return { success: false, error: err.message };
+    }
+}
+
+// Limpiar estado temporal después de procesar pago
+async function limpiarEstadoPagoTemporal(userId) {
+    try {
+        const query = `DELETE FROM estados_pago_temporal WHERE user_id = $1`;
+        await pool.query(query, [userId]);
+        console.log("✅ Estado temporal limpiado para:", userId);
+        return { success: true };
+    } catch (err) {
+        console.error("❌ Error limpiando estado temporal:", err);
+        return { success: false, error: err.message };
+    }
+}
+
+// Limpiar estados expirados (más de 30 minutos)
+async function limpiarEstadosExpirados() {
+    try {
+        const query = `DELETE FROM estados_pago_temporal WHERE expires_at < CURRENT_TIMESTAMP`;
+        const result = await pool.query(query);
+        if (result.rowCount > 0) {
+            console.log(`🧹 ${result.rowCount} estados temporales expirados eliminados`);
+        }
+        return { success: true, eliminados: result.rowCount };
+    } catch (err) {
+        console.error("❌ Error limpiando estados expirados:", err);
+        return { success: false, error: err.message };
+    }
+}
+
 // Inicializar la base de datos al cargar el módulo
 initializeDatabase();
 
@@ -296,5 +395,9 @@ module.exports = {
     actualizarObservaciones,
     consultarInformacionPaciente,
     marcarPagado,
+    guardarEstadoPagoTemporal,
+    verificarEstadoPagoTemporal,
+    limpiarEstadoPagoTemporal,
+    limpiarEstadosExpirados,
     pool
 };
