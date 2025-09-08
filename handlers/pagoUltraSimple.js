@@ -78,7 +78,7 @@ async function procesarImagen(message, res) {
 }
 
 /**
- * Procesar texto - Si es cédula, procesar pago
+ * Procesar texto - Si es cédula, procesar pago SOLO si ya se envió imagen
  */
 async function procesarTexto(message, res) {
     const from = message.from;
@@ -88,18 +88,18 @@ async function procesarTexto(message, res) {
     try {
         logInfo('pagoUltraSimple', 'Texto recibido', { userId, texto });
         
-        // Si es una cédula, verificar estado y procesar pago
+        // Primero verificar si hay un comprobante validado previamente
+        const estadoTemporal = await verificarEstadoPagoTemporal(userId);
+        
+        // Si NO hay comprobante previo, ignorar CUALQUIER texto (incluyendo cédulas)
+        if (!estadoTemporal.validado) {
+            logInfo('pagoUltraSimple', 'Ignorando texto - sin comprobante previo', { userId });
+            return res.json({ success: true, mensaje: "Texto ignorado - esperando imagen primero" });
+        }
+        
+        // Solo procesar si es una cédula Y ya hay comprobante validado
         if (esCedula(texto)) {
-            logInfo('pagoUltraSimple', 'Cédula detectada, verificando estado', { userId, cedula: texto });
-            
-            // Verificar si hay un comprobante validado previamente
-            const estadoTemporal = await verificarEstadoPagoTemporal(userId);
-            
-            if (!estadoTemporal.validado) {
-                logInfo('pagoUltraSimple', 'Sin comprobante previo', { userId });
-                await sendMessage(from, `❌ Primero debes enviar una foto del comprobante de pago.\n\n📸 Por favor, envía la imagen del comprobante.`);
-                return res.json({ success: false, mensaje: "Sin comprobante previo" });
-            }
+            logInfo('pagoUltraSimple', 'Cédula detectada con comprobante previo', { userId, cedula: texto });
             
             logInfo('pagoUltraSimple', 'Comprobante validado, procesando pago', { userId, cedula: texto });
             
@@ -135,8 +135,9 @@ async function procesarTexto(message, res) {
             return res.json({ success: true });
         }
         
-        // Si no es cédula, ignorar
-        return res.json({ success: true, mensaje: "Texto ignorado - no es cédula" });
+        // Si no es cédula pero hay comprobante validado, recordar que debe enviar la cédula
+        await sendMessage(from, `✅ Ya recibí tu comprobante.\n\n📝 Por favor, escribe tu número de documento *solo los números*`);
+        return res.json({ success: true, mensaje: "Recordatorio enviado - esperando cédula" });
         
     } catch (error) {
         logError('pagoUltraSimple', 'Error procesando texto', { userId, error });
