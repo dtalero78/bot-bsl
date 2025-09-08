@@ -12,7 +12,7 @@ async function marcarPagado(cedula) {
             },
             body: JSON.stringify({
                 userId: cedula,
-                observaciones: "pagado"
+                observaciones: "Pagado"
             })
         });
         

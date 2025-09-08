@@ -100,7 +100,7 @@ async function procesarTexto(message, res) {
                 
                 if (pdfUrl) {
                     await sendPdf(from, pdfUrl, texto);
-                    await sendMessage(from, `🎉 *¡Proceso completado!*\n\n✅ Pago registrado\n📄 Certificado enviado\n✨ Sin marca de agua`);
+                    await sendMessage(from, `🎉 *¡Proceso completado!*`);
                 } else {
                     await sendMessage(from, `✅ Pago registrado\n\n⚠️ Error generando PDF. Un asesor te lo enviará.`);
                 }
