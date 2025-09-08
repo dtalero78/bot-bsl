@@ -215,64 +215,44 @@ class QueueService {
         let mensajeRespuesta = "";
         let valorDetectado = null;
         
-        // 2. Procesar según clasificación
-        switch (clasificacion) {
-            case "comprobante_pago":
-                const informacionPago = await openaiService.extraerInformacionPago(base64Image, mimeType);
-                valorDetectado = informacionPago.valor;
-                
-                if (valorDetectado && /^\d{4,}$/.test(valorDetectado)) {
-                    mensajeRespuesta = `✅ *Comprobante de pago recibido correctamente*\n\n💰 Valor detectado: $${valorDetectado}\n\n📝 Para completar el proceso y generar tu certificado, por favor escribe tu *número de documento* (solo números, sin puntos).`;
-                    
-                    // Actualizar el nivel de la conversación para esperar documento después de comprobante
-                    try {
-                        const { guardarConversacionEnDB } = require('../utils/dbAPI');
-                        await guardarConversacionEnDB({
-                            userId: userId,
-                            nombre: nombre,
-                            mensajes: historial,
-                            nivel: 'esperando_documento_pago'
-                        });
-                        logInfo('QueueService', 'Nivel actualizado a esperando_documento_pago', { userId });
-                    } catch (dbError) {
-                        logError('QueueService', 'Error actualizando nivel en DB', { userId, error: dbError });
-                    }
-                } else {
-                    mensajeRespuesta = "❌ No pude identificar el valor en el comprobante. Por favor envía una imagen más clara del soporte de pago.";
+        // 2. FLUJO SIMPLE: Cualquier imagen -> Pedir documento
+        // No importa la clasificación, siempre pedir documento para procesar pago
+        mensajeRespuesta = `📸 *Imagen recibida correctamente*\n\n📝 Para completar el proceso y generar tu certificado, por favor escribe tu *número de documento* (solo números, sin puntos).`;
+        
+        // Actualizar nivel para esperar documento
+        try {
+            const { guardarConversacionEnDB, obtenerConversacionDeDB } = require('../utils/dbAPI');
+            
+            const conversacionActual = await obtenerConversacionDeDB(userId);
+            
+            const historialCompleto = [
+                ...conversacionActual.mensajes,
+                {
+                    from: "usuario",
+                    mensaje: "📷 (imagen enviada)",
+                    timestamp: new Date().toISOString()
+                },
+                {
+                    from: "sistema",
+                    mensaje: mensajeRespuesta,
+                    timestamp: new Date().toISOString()
                 }
-                break;
-                
-            case "listado_examenes":
-                mensajeRespuesta = `📋 He recibido tu orden médica.\n\n🩺 Nuestras opciones para exámenes ocupacionales:\n• Virtual: $46.000\n• Presencial: $69.000\n\n¿Cuál opción prefieres?`;
-                break;
-                
-            case "confirmacion_cita":
-                mensajeRespuesta = "📅 He recibido tu confirmación de cita. Para consultar información específica, proporciona tu número de documento.";
-                break;
-                
-            case "documento_identidad":
-                const informacionDoc = await openaiService.extraerInformacionDocumento(base64Image, mimeType);
-                if (informacionDoc.numero_documento) {
-                    mensajeRespuesta = `🆔 He recibido tu documento.\n\nNúmero identificado: ${informacionDoc.numero_documento}\n\n¿Necesitas consultar información sobre tu cita o realizar un examen médico?`;
-                } else {
-                    mensajeRespuesta = "🆔 He recibido tu documento. ¿Necesitas consultar información sobre tu cita o realizar un examen médico?";
-                }
-                break;
-                
-            default:
-                mensajeRespuesta = "📷 He recibido tu imagen, pero no pude identificar qué tipo de documento es.\n\n¿Podrías decirme qué información necesitas o enviar un comprobante de pago, orden médica o documento más claro?";
-                break;
+            ];
+            
+            await guardarConversacionEnDB({
+                userId: userId,
+                nombre: nombre,
+                mensajes: historialCompleto,
+                nivel: 'esperando_documento_pago'
+            });
+            
+            logInfo('QueueService', 'Imagen procesada - esperando documento', { userId });
+        } catch (dbError) {
+            logError('QueueService', 'Error actualizando conversación', { userId, error: dbError });
         }
         
-        // 3. Enviar respuesta
-        await MessageService.enviarMensajeYGuardar({
-            to,
-            userId,
-            nombre,
-            texto: mensajeRespuesta,
-            historial,
-            remitente: "sistema"
-        });
+        // 3. Enviar respuesta (ya guardamos en DB arriba)
+        await MessageService.enviarMensajeSimple(to, mensajeRespuesta);
         
         logInfo('QueueService', 'Imagen procesada completamente', {
             userId,
