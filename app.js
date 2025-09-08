@@ -81,30 +81,46 @@ function identificarActor(message) {
 }
 
 
-// Nuevo endpoint dedicado para imágenes - FLUJO SIMPLE
+// ENDPOINT ULTRA SIMPLE PARA IMÁGENES
 app.post('/webhook-imagenes', async (req, res) => {
     try {
         const body = req.body;
         if (!body || !body.messages || !Array.isArray(body.messages)) {
-            return res.status(400).json({ success: false, error: "No hay mensajes en el payload." });
+            return res.status(400).json({ success: false, error: "No hay mensajes" });
         }
         
         const message = body.messages[0];
         
-        // Solo procesar si es una imagen
-        if (message.type === "image") {
-            const actor = identificarActor(message);
-            
-            // Solo procesar imágenes de usuarios
-            if (actor === "usuario") {
-                const { procesarImagenSimple } = require('./handlers/procesarPagoSimple');
-                return await procesarImagenSimple(message, res);
-            }
+        if (message.type === "image" && message.from !== BOT_NUMBER) {
+            const { procesarImagen } = require('./handlers/pagoUltraSimple');
+            return await procesarImagen(message, res);
         }
         
-        return res.json({ success: true, mensaje: "No es una imagen o no es de usuario." });
+        return res.json({ success: true });
     } catch (error) {
         logError('app.js', error, { endpoint: '/webhook-imagenes' });
+        return res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ENDPOINT ULTRA SIMPLE PARA TEXTO (CÉDULAS)
+app.post('/webhook-texto', async (req, res) => {
+    try {
+        const body = req.body;
+        if (!body || !body.messages || !Array.isArray(body.messages)) {
+            return res.status(400).json({ success: false, error: "No hay mensajes" });
+        }
+        
+        const message = body.messages[0];
+        
+        if (message.type === "text" && message.from !== BOT_NUMBER) {
+            const { procesarTexto } = require('./handlers/pagoUltraSimple');
+            return await procesarTexto(message, res);
+        }
+        
+        return res.json({ success: true });
+    } catch (error) {
+        logError('app.js', error, { endpoint: '/webhook-texto' });
         return res.status(500).json({ success: false, error: error.message });
     }
 });
