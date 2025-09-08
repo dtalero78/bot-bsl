@@ -86,7 +86,8 @@ app.post('/webhook-pago', async (req, res) => {
     try {
         const body = req.body;
         if (!body || !body.messages || !Array.isArray(body.messages)) {
-            return res.status(400).json({ success: false, error: "No hay mensajes" });
+            // Simplemente ignorar requests vacíos o mal formados
+            return res.json({ success: true });
         }
         
         const message = body.messages[0];

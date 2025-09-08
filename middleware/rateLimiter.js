@@ -81,13 +81,8 @@ class RateLimiter {
                 const key = config.keyGenerator(req);
                 const cacheService = getCacheService();
                 
-                // Si no hay cache disponible, permitir el request pero loguearlo
+                // Si no hay cache disponible, permitir el request sin loguear
                 if (!cacheService.isAvailable()) {
-                    logger.warn('RateLimiter', 'Cache not available, skipping rate limiting', {
-                        ip: req.ip,
-                        endpoint: req.path,
-                        method: req.method
-                    });
                     return next();
                 }
 
