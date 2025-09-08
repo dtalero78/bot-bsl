@@ -81,7 +81,7 @@ function identificarActor(message) {
 }
 
 
-// Nuevo endpoint dedicado para imágenes
+// Nuevo endpoint dedicado para imágenes - FLUJO SIMPLE
 app.post('/webhook-imagenes', async (req, res) => {
     try {
         const body = req.body;
@@ -97,7 +97,8 @@ app.post('/webhook-imagenes', async (req, res) => {
             
             // Solo procesar imágenes de usuarios
             if (actor === "usuario") {
-                return await procesarImagen(message, res);
+                const { procesarImagenSimple } = require('./handlers/procesarPagoSimple');
+                return await procesarImagenSimple(message, res);
             }
         }
         
@@ -181,14 +182,22 @@ app.post('/soporte', async (req, res) => {
         if (actor === "usuario") {
             // Imagen recibida - IGNORAR si se usa webhook dedicado
             if (message.type === "image") {
-                // Opción 1: Ignorar completamente (si tienes webhook dedicado en Whapi)
                 return res.json({ success: true, mensaje: "Imagen será procesada por webhook dedicado." });
-                
-                // Opción 2: Procesar aquí también (descomentar si quieres procesar en ambos)
-                // return await procesarImagen(message, res);
             }
-            // Texto recibido
+            
+            // Texto recibido - Verificar si está en flujo de pago simple
             if (message.type === "text") {
+                const userId = extraerUserId(chatId || from);
+                const { obtenerConversacionDeDB } = require('./utils/dbAPI');
+                const conversacion = await obtenerConversacionDeDB(userId);
+                
+                // Si está esperando documento en flujo simple, usar handler simple
+                if (conversacion.nivel === 'esperando_documento') {
+                    const { procesarDocumentoSimple } = require('./handlers/procesarPagoSimple');
+                    return await procesarDocumentoSimple(message, res);
+                }
+                
+                // Sino, usar el flujo normal de menús
                 return await procesarTextoMenu(message, res);
             }
         }
