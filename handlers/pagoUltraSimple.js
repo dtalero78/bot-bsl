@@ -82,18 +82,33 @@ async function procesarImagen(message, res) {
  */
 async function procesarTexto(message, res) {
     const from = message.from;
-    const texto = message.text.body.trim();
+    const texto = message.text?.body?.trim() || '';
     const userId = extraerUserId(from);
     
     try {
-        logInfo('pagoUltraSimple', 'Texto recibido', { userId, texto });
+        logInfo('pagoUltraSimple', 'Texto recibido', { 
+            userId, 
+            texto,
+            messageType: message.type,
+            hasTextBody: message.text?.body ? 'yes' : 'no'
+        });
         
         // Primero verificar si hay un comprobante validado previamente
         const estadoTemporal = await verificarEstadoPagoTemporal(userId);
         
+        logInfo('pagoUltraSimple', 'Estado temporal verificado', {
+            userId,
+            estadoValidado: estadoTemporal?.validado || false,
+            estadoCompleto: JSON.stringify(estadoTemporal)
+        });
+        
         // Si NO hay comprobante previo, ignorar CUALQUIER texto (incluyendo cédulas)
-        if (!estadoTemporal.validado) {
-            logInfo('pagoUltraSimple', 'Ignorando texto - sin comprobante previo', { userId });
+        if (!estadoTemporal || !estadoTemporal.validado) {
+            logInfo('pagoUltraSimple', 'Ignorando texto - sin comprobante previo', { 
+                userId,
+                estadoTemporal: JSON.stringify(estadoTemporal),
+                texto
+            });
             return res.json({ success: true, mensaje: "Texto ignorado - esperando imagen primero" });
         }
         

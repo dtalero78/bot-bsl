@@ -85,6 +85,14 @@ function identificarActor(message) {
 app.post('/webhook-pago', async (req, res) => {
     try {
         const body = req.body;
+        
+        // Log de TODOS los mensajes que llegan
+        logInfo('webhook-pago', 'Mensaje recibido', { 
+            body: JSON.stringify(body),
+            hasMessages: body?.messages ? 'yes' : 'no',
+            messageCount: body?.messages?.length || 0
+        });
+        
         if (!body || !body.messages || !Array.isArray(body.messages)) {
             // Simplemente ignorar requests vacíos o mal formados
             return res.json({ success: true });
@@ -92,8 +100,17 @@ app.post('/webhook-pago', async (req, res) => {
         
         const message = body.messages[0];
         
+        // Log detallado del mensaje
+        logInfo('webhook-pago', 'Procesando mensaje', {
+            from: message.from,
+            type: message.type,
+            text: message.text?.body || 'N/A',
+            hasImage: message.image ? 'yes' : 'no'
+        });
+        
         // Si es del bot, ignorar
         if (message.from === BOT_NUMBER) {
+            logInfo('webhook-pago', 'Mensaje del bot ignorado');
             return res.json({ success: true });
         }
         

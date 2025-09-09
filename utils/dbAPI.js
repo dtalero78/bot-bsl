@@ -335,7 +335,7 @@ async function guardarEstadoPagoTemporal(userId) {
 async function verificarEstadoPagoTemporal(userId) {
     try {
         const query = `
-            SELECT comprobante_validado 
+            SELECT comprobante_validado, created_at, expires_at 
             FROM estados_pago_temporal 
             WHERE user_id = $1 
             AND comprobante_validado = TRUE
@@ -344,9 +344,15 @@ async function verificarEstadoPagoTemporal(userId) {
         
         const result = await pool.query(query, [userId]);
         
+        console.log("[DEBUG] verificarEstadoPagoTemporal - Query result:", {
+            userId,
+            rowCount: result.rows.length,
+            rows: result.rows
+        });
+        
         if (result.rows.length > 0) {
             console.log("✅ Estado temporal válido encontrado para:", userId);
-            return { success: true, validado: true };
+            return { success: true, validado: true, data: result.rows[0] };
         }
         
         console.log("⚠️ No hay estado temporal válido para:", userId);
