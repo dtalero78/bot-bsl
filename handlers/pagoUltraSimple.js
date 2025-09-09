@@ -55,9 +55,14 @@ async function procesarImagen(message, res) {
         const clasificacion = await openaiService.clasificarImagen(base64Image, mimeType);
         
         if (clasificacion !== "comprobante_pago") {
-            const mensaje = `...transfiriendo con asesor`;
-            await sendMessage(from, mensaje);
-            return res.json({ success: true, mensaje: "Imagen rechazada" });
+            logInfo('pagoUltraSimple', 'Imagen no es comprobante - reenviando a flujo principal', {
+                userId,
+                clasificacion
+            });
+            
+            // Reenviar imagen al procesamiento principal del bot
+            const { procesarImagen: procesarImagenBot } = require('./procesarImagen');
+            return await procesarImagenBot(message, res);
         }
         
         // 3. Si SÍ es comprobante válido, guardar estado temporal
@@ -102,14 +107,16 @@ async function procesarTexto(message, res) {
             estadoCompleto: JSON.stringify(estadoTemporal)
         });
         
-        // Si NO hay comprobante previo, ignorar CUALQUIER texto (incluyendo cédulas)
+        // Si NO hay comprobante previo, reenviar al flujo principal
         if (!estadoTemporal || !estadoTemporal.validado) {
-            logInfo('pagoUltraSimple', 'Ignorando texto - sin comprobante previo', { 
+            logInfo('pagoUltraSimple', 'Sin comprobante - reenviando a flujo principal', { 
                 userId,
                 estadoTemporal: JSON.stringify(estadoTemporal),
                 texto
             });
-            return res.json({ success: true, mensaje: "Texto ignorado - esperando imagen primero" });
+            
+            // Reenviar al procesamiento principal del bot
+            return await reenviarAFlujoPrincipal(message, res);
         }
         
         // Solo procesar si es una cédula Y ya hay comprobante validado
@@ -160,7 +167,30 @@ async function procesarTexto(message, res) {
     }
 }
 
+/**
+ * Reenviar mensaje al flujo principal del bot cuando no hay comprobante
+ */
+async function reenviarAFlujoPrincipal(message, res) {
+    try {
+        logInfo('pagoUltraSimple', 'Reenviando a procesamiento principal');
+        
+        // Importar y usar el procesador de texto principal del bot
+        const { procesarTexto: procesarTextoBot } = require('./procesarTexto');
+        return await procesarTextoBot(message, res);
+        
+    } catch (error) {
+        logError('pagoUltraSimple', 'Error reenviando a flujo principal', { error });
+        
+        // Si falla el reenvío, al menos responder que no se puede procesar
+        const { sendMessage } = require('../utils/sendMessage');
+        await sendMessage(message.from, 'Lo siento, no pude procesar tu mensaje. Intenta de nuevo.');
+        
+        return res.json({ success: false, error: 'Error reenviando mensaje' });
+    }
+}
+
 module.exports = {
     procesarImagen,
-    procesarTexto
+    procesarTexto,
+    reenviarAFlujoPrincipal
 };
