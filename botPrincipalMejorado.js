@@ -16,14 +16,27 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const { procesarImagen, procesarTexto } = require('./handlers/pagoUltraSimple');
-const { logInfo, logError } = require('./utils/shared');
+const { logInfo, logError, extraerUserId } = require('./utils/shared');
 const { config } = require('./config/environment');
+const { limpiarEstadoPagoTemporal } = require('./utils/dbAPI');
 
 const app = express();
 app.use(bodyParser.json({ limit: '50mb' }));
 
 const BOT_NUMBER = "573008021701";
 const PORT = process.env.PORT || 3000;
+
+function identificarActor(message) {
+    if (message.from !== BOT_NUMBER) return "usuario";
+    // Aquí ambos bot y admin son from_me===true y from==BOT_NUMBER
+    // Pero el bot tiene source: "api"
+    // El admin tiene source: "web" o "mobile"
+    if (message.from_me === true) {
+        if (message.source === "api") return "sistema"; // Respuesta automática del bot
+        if (message.source === "web" || message.source === "mobile") return "admin"; // Manual desde WhatsApp
+    }
+    return "usuario"; // fallback
+}
 
 // Webhook principal para procesamiento de pagos
 app.post('/webhook-pago', async (req, res) => {
@@ -59,21 +72,45 @@ app.post('/webhook-pago', async (req, res) => {
             timestamp: message.timestamp
         });
         
-        // Ignorar mensajes del propio bot
-        if (message.from === BOT_NUMBER) {
+        const actor = identificarActor(message);
+        
+        // Detectar comando de admin "...pago recibido"
+        if (actor === "admin" && message.type === "text") {
+            const texto = message.text?.body?.trim() || '';
+            logInfo('webhook-pago', 'Mensaje de admin detectado', { texto, actor });
+            
+            if (texto.includes('...pago recibido')) {
+                const userId = extraerUserId(message.from);
+                logInfo('webhook-pago', 'Comando "pago recibido" detectado, limpiando estado', { userId });
+                
+                try {
+                    await limpiarEstadoPagoTemporal(userId);
+                    logInfo('webhook-pago', 'Estado temporal limpiado exitosamente', { userId });
+                } catch (error) {
+                    logError('webhook-pago', 'Error limpiando estado temporal', { userId, error });
+                }
+                
+                return res.json({ success: true, mensaje: "Flujo de pago desactivado por admin" });
+            }
+        }
+        
+        // Ignorar otros mensajes del propio bot (sistema)
+        if (message.from === BOT_NUMBER && actor !== "admin") {
             logInfo('webhook-pago', 'Mensaje del bot ignorado');
             return res.json({ success: true });
         }
         
-        // Procesar según el tipo de mensaje
-        if (message.type === "image") {
-            logInfo('webhook-pago', 'Delegando a procesarImagen');
-            return await procesarImagen(message, res);
-        }
-        
-        if (message.type === "text") {
-            logInfo('webhook-pago', 'Delegando a procesarTexto');
-            return await procesarTexto(message, res);
+        // Procesar según el tipo de mensaje (solo usuarios)
+        if (actor === "usuario") {
+            if (message.type === "image") {
+                logInfo('webhook-pago', 'Delegando a procesarImagen');
+                return await procesarImagen(message, res);
+            }
+            
+            if (message.type === "text") {
+                logInfo('webhook-pago', 'Delegando a procesarTexto');
+                return await procesarTexto(message, res);
+            }
         }
         
         // Otros tipos de mensaje (audio, video, etc.)
