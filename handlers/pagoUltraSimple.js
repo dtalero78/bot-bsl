@@ -95,16 +95,26 @@ async function procesarTexto(message, res) {
         
         // Primero verificar si hay un comprobante validado previamente
         const estadoTemporal = await verificarEstadoPagoTemporal(userId);
-        
+
         logInfo('pagoUltraSimple', 'Estado temporal verificado', {
             userId,
             estadoValidado: estadoTemporal?.validado || false,
+            estadoCancelado: estadoTemporal?.cancelado || false,
             estadoCompleto: JSON.stringify(estadoTemporal)
         });
-        
+
+        // Si está cancelado por admin, ignorar completamente
+        if (estadoTemporal?.cancelado) {
+            logInfo('pagoUltraSimple', 'Proceso cancelado por admin - ignorando mensaje', {
+                userId,
+                texto
+            });
+            return res.json({ success: true, mensaje: "Proceso cancelado por admin" });
+        }
+
         // Si NO hay comprobante previo, ignorar CUALQUIER texto (incluyendo cédulas)
         if (!estadoTemporal || !estadoTemporal.validado) {
-            logInfo('pagoUltraSimple', 'Ignorando texto - sin comprobante previo', { 
+            logInfo('pagoUltraSimple', 'Ignorando texto - sin comprobante previo', {
                 userId,
                 estadoTemporal: JSON.stringify(estadoTemporal),
                 texto

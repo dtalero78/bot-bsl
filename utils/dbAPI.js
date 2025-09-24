@@ -120,9 +120,16 @@ async function initializeDatabase() {
                 id SERIAL PRIMARY KEY,
                 user_id VARCHAR(50) UNIQUE NOT NULL,
                 comprobante_validado BOOLEAN DEFAULT FALSE,
+                cancelado_por_admin BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '30 minutes')
             )
+        `);
+
+        // Agregar la columna cancelado_por_admin si no existe (para actualizaciones)
+        await pool.query(`
+            ALTER TABLE estados_pago_temporal
+            ADD COLUMN IF NOT EXISTS cancelado_por_admin BOOLEAN DEFAULT FALSE
         `);
         
         // Índice para búsquedas rápidas y limpieza de expirados
@@ -335,28 +342,38 @@ async function guardarEstadoPagoTemporal(userId) {
 async function verificarEstadoPagoTemporal(userId) {
     try {
         const query = `
-            SELECT comprobante_validado, created_at, expires_at 
-            FROM estados_pago_temporal 
-            WHERE user_id = $1 
-            AND comprobante_validado = TRUE
+            SELECT comprobante_validado, cancelado_por_admin, created_at, expires_at
+            FROM estados_pago_temporal
+            WHERE user_id = $1
             AND expires_at > CURRENT_TIMESTAMP
         `;
-        
+
         const result = await pool.query(query, [userId]);
-        
+
         console.log("[DEBUG] verificarEstadoPagoTemporal - Query result:", {
             userId,
             rowCount: result.rows.length,
             rows: result.rows
         });
-        
+
         if (result.rows.length > 0) {
-            console.log("✅ Estado temporal válido encontrado para:", userId);
-            return { success: true, validado: true, data: result.rows[0] };
+            const estado = result.rows[0];
+
+            // Si está cancelado por admin, retornar como cancelado
+            if (estado.cancelado_por_admin) {
+                console.log("🚫 Estado temporal cancelado por admin para:", userId);
+                return { success: true, validado: false, cancelado: true, data: estado };
+            }
+
+            // Si está validado y no cancelado
+            if (estado.comprobante_validado) {
+                console.log("✅ Estado temporal válido encontrado para:", userId);
+                return { success: true, validado: true, cancelado: false, data: estado };
+            }
         }
-        
+
         console.log("⚠️ No hay estado temporal válido para:", userId);
-        return { success: true, validado: false };
+        return { success: true, validado: false, cancelado: false };
     } catch (err) {
         console.error("❌ Error verificando estado temporal:", err);
         return { success: false, error: err.message };
@@ -372,6 +389,32 @@ async function limpiarEstadoPagoTemporal(userId) {
         return { success: true };
     } catch (err) {
         console.error("❌ Error limpiando estado temporal:", err);
+        return { success: false, error: err.message };
+    }
+}
+
+// Marcar estado temporal como cancelado por admin
+async function cancelarEstadoPagoTemporal(userId) {
+    try {
+        // Limpiar estados expirados primero
+        await limpiarEstadosExpirados();
+
+        const query = `
+            INSERT INTO estados_pago_temporal (user_id, comprobante_validado, cancelado_por_admin, created_at, expires_at)
+            VALUES ($1, FALSE, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '24 hours')
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                comprobante_validado = FALSE,
+                cancelado_por_admin = TRUE,
+                created_at = CURRENT_TIMESTAMP,
+                expires_at = CURRENT_TIMESTAMP + INTERVAL '24 hours'
+        `;
+
+        await pool.query(query, [userId]);
+        console.log("✅ Estado de pago cancelado por admin para:", userId);
+        return { success: true };
+    } catch (err) {
+        console.error("❌ Error cancelando estado temporal:", err);
         return { success: false, error: err.message };
     }
 }
@@ -404,6 +447,7 @@ module.exports = {
     guardarEstadoPagoTemporal,
     verificarEstadoPagoTemporal,
     limpiarEstadoPagoTemporal,
+    cancelarEstadoPagoTemporal,
     limpiarEstadosExpirados,
     pool
 };

@@ -9,7 +9,12 @@ Node.js WhatsApp bot for BSL (medical services company) that handles customer in
 ## Common Development Commands
 
 - **Start the application**: `npm start` or `node app.js`
+- **Development mode**: `npm run dev` (runs both backend and frontend concurrently)
 - **Install dependencies**: `npm install`
+- **Build project**: `npm run build` (builds frontend)
+- **Frontend development**: `npm run frontend:dev` (runs Vite dev server)
+- **Frontend build**: `npm run frontend:build`
+- **Deploy**: `npm run deploy` (builds and starts)
 - **Test**: No tests configured (displays "Error: no test specified")
 
 ## Code Architecture
@@ -21,6 +26,10 @@ Node.js WhatsApp bot for BSL (medical services company) that handles customer in
   - `/api/guardarMensaje`: API endpoint for saving messages
   - `/admin/*`: Admin panel routes for bot management
   - `/metrics`: Performance monitoring endpoint
+- **botPrincipalMejorado.js**: Simplified payment flow webhook server
+  - `/webhook-pago`: Ultra-simple payment processing endpoint
+  - Handles image validation and document collection for payments
+  - Admin control commands for payment flow management
   
 ### Message Flow & Actor System
 
@@ -38,7 +47,8 @@ All actors use `BOT_NUMBER = "573008021701"`
 ├── controlBot.js       # Bot control (stop/start commands)
 ├── procesarImagen.js   # Image processing with OpenAI Vision
 ├── procesarTexto.js    # Text message processing & conversation flow
-└── faseHandlers.js     # Phase-specific conversation handlers
+├── faseHandlers.js     # Phase-specific conversation handlers
+└── pagoUltraSimple.js  # Ultra-simplified payment flow handlers
 
 /services/               # Business logic services
 ├── messageService.js   # Unified message handling and database operations
@@ -71,6 +81,11 @@ All actors use `BOT_NUMBER = "573008021701"`
 /routes/                # Route handlers
 ├── admin.js            # Admin panel functionality
 └── metrics.js          # Performance metrics endpoints
+
+/frontend/              # React + TypeScript + Vite admin dashboard
+├── src/                # React components and application code
+├── package.json        # Frontend dependencies (React 19, Tailwind, Radix UI)
+└── dist/               # Built frontend assets served by Express
 ```
 
 ### Key Features
@@ -93,8 +108,14 @@ All actors use `BOT_NUMBER = "573008021701"`
      - Exact phrases: "...transfiriendo con asesor", "...transfiriendo con asesor."
      - Keywords: "foundever", "ttec", "evertec", "rippling", "egreso"
    - **Restart bot**: "...te dejo con el bot 🤖"
+   - **Admin payment control**: "...pago recibido" (disables pagoUltraSimple flow)
 
-4. **Duplicate Message Prevention**: All handlers implement deduplication using `limpiarDuplicados()` function
+4. **Ultra-Simple Payment Flow**: Simplified payment processing via `/webhook-pago`
+   - Image validation with OpenAI → Document request → Payment processing
+   - Temporary state management with automatic cleanup
+   - Admin override capabilities
+
+5. **Duplicate Message Prevention**: All handlers implement deduplication using `limpiarDuplicados()` function
 
 ### Environment Variables Required
 
@@ -141,6 +162,7 @@ REDIS_URL    # Redis connection URL for caching
 
 ### Data Flow
 
+#### Main Bot Flow (`/soporte`)
 1. WhatsApp message → `/soporte` endpoint
 2. Request validation and rate limiting (middleware)
 3. Actor identification (user/admin/sistema)
@@ -151,6 +173,15 @@ REDIS_URL    # Redis connection URL for caching
    - Text → `procesarTexto.js` → Phase detection → Appropriate handler
 7. Response generation → WhatsApp API
 8. Conversation storage → PostgreSQL database + Redis cache update
+
+#### Payment Flow (`/webhook-pago`)
+1. WhatsApp message → `/webhook-pago` endpoint
+2. Actor identification (user/admin/sistema)
+3. Admin command detection ("...pago recibido" → clear payment state)
+4. User message processing:
+   - Images → OpenAI validation → Store temporary state → Request document
+   - Text → Document validation → Payment processing → PDF generation
+5. State management via temporary payment flags in database
 
 ### Important Implementation Details
 
@@ -258,14 +289,28 @@ REDIS_URL    # Redis connection URL for caching
 - **Infrastructure**: Added middleware layer for better request handling
 
 ### 📊 Dependencies
+#### Backend
 ```json
 {
   "express": "^5.1.0",
-  "pg": "^8.16.3",
+  "pg": "^8.16.3", 
   "redis": "^5.8.2",
   "node-fetch": "^3.3.2",
   "puppeteer": "^24.10.1",
-  "dotenv": "^16.5.0"
+  "dotenv": "^16.5.0",
+  "encoding": "^0.1.13"
+}
+```
+
+#### Frontend
+```json
+{
+  "react": "^19.1.1",
+  "react-dom": "^19.1.1",
+  "vite": "^7.1.2",
+  "@radix-ui/react-*": "Latest versions",
+  "tailwindcss": "^4.1.13",
+  "typescript": "~5.8.3"
 }
 ```
 

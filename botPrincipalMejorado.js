@@ -18,7 +18,7 @@ const bodyParser = require('body-parser');
 const { procesarImagen, procesarTexto } = require('./handlers/pagoUltraSimple');
 const { logInfo, logError, extraerUserId } = require('./utils/shared');
 const { config } = require('./config/environment');
-const { limpiarEstadoPagoTemporal } = require('./utils/dbAPI');
+const { cancelarEstadoPagoTemporal } = require('./utils/dbAPI');
 
 const app = express();
 app.use(bodyParser.json({ limit: '50mb' }));
@@ -81,16 +81,16 @@ app.post('/webhook-pago', async (req, res) => {
             
             if (texto.includes('...pago recibido')) {
                 const userId = extraerUserId(message.from);
-                logInfo('webhook-pago', 'Comando "pago recibido" detectado, limpiando estado', { userId });
-                
+                logInfo('webhook-pago', 'Comando "pago recibido" detectado, cancelando proceso', { userId });
+
                 try {
-                    await limpiarEstadoPagoTemporal(userId);
-                    logInfo('webhook-pago', 'Estado temporal limpiado exitosamente', { userId });
+                    await cancelarEstadoPagoTemporal(userId);
+                    logInfo('webhook-pago', 'Proceso de pago cancelado exitosamente por admin', { userId });
                 } catch (error) {
-                    logError('webhook-pago', 'Error limpiando estado temporal', { userId, error });
+                    logError('webhook-pago', 'Error cancelando proceso de pago', { userId, error });
                 }
-                
-                return res.json({ success: true, mensaje: "Flujo de pago desactivado por admin" });
+
+                return res.json({ success: true, mensaje: "Proceso de pago cancelado por admin" });
             }
         }
         
