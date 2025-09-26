@@ -78,10 +78,15 @@ app.post('/webhook-pago', async (req, res) => {
         if (actor === "admin" && message.type === "text") {
             const texto = message.text?.body?.trim() || '';
             logInfo('webhook-pago', 'Mensaje de admin detectado', { texto, actor });
-            
+
             if (texto.includes('...pago recibido')) {
-                const userId = extraerUserId(message.from);
-                logInfo('webhook-pago', 'Comando "pago recibido" detectado, cancelando proceso', { userId });
+                // Para mensajes de admin, el userId está en chat_id, NO en from
+                const userId = extraerUserId(message.chat_id || message.from);
+                logInfo('webhook-pago', 'Comando "pago recibido" detectado, cancelando proceso', {
+                    userId,
+                    chatId: message.chat_id,
+                    from: message.from
+                });
 
                 try {
                     await cancelarEstadoPagoTemporal(userId);
