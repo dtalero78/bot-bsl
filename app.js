@@ -61,6 +61,7 @@ const { procesarTextoMenu } = require('./handlers/procesarTextoMenu');
 // const { procesarTexto } = require('./handlers/procesarTexto'); // Versión compleja comentada
 const { guardarConversacionEnDB, obtenerConversacionDeDB } = require('./utils/dbAPI');
 const { obtenerTextoMensaje, extraerUserId, limpiarDuplicados, logInfo, logError } = require('./utils/shared');
+const { sendMessage } = require('./utils/sendMessage');
 const logger = require('./utils/logger');
 const { config } = require('./config/environment');
 const HealthCheckService = require('./middleware/healthCheck');
@@ -105,7 +106,10 @@ app.post('/webhook-pago', async (req, res) => {
             from: message.from,
             type: message.type,
             text: message.text?.body || 'N/A',
-            hasImage: message.image ? 'yes' : 'no'
+            hasImage: message.image ? 'yes' : 'no',
+            hasDocument: message.document ? 'yes' : 'no',
+            hasSticker: message.sticker ? 'yes' : 'no',
+            mimeType: message.image?.mime_type || message.document?.mime_type || 'N/A'
         });
         
         // Si es del bot, ignorar
@@ -115,17 +119,27 @@ app.post('/webhook-pago', async (req, res) => {
         }
         
         const { procesarImagen, procesarTexto } = require('./handlers/pagoUltraSimple');
-        
+
+        // Rechazar documentos, stickers y otros tipos no soportados
+        if (message.type === "document" || message.type === "sticker" || message.type === "audio" || message.type === "video") {
+            logInfo('webhook-pago', 'Tipo de archivo no soportado rechazado', {
+                type: message.type,
+                from: message.from
+            });
+            await sendMessage(message.from, `❌ Solo puedo procesar *imágenes* de comprobantes de pago.\n\nPor favor, envía una *foto* (no documento PDF) de tu comprobante.`);
+            return res.json({ success: true, mensaje: "Tipo de archivo no soportado" });
+        }
+
         // IMAGEN -> Validar con OpenAI y pedir documento
         if (message.type === "image") {
             return await procesarImagen(message, res);
         }
-        
+
         // TEXTO -> Si es cédula, procesar pago inmediatamente
         if (message.type === "text") {
             return await procesarTexto(message, res);
         }
-        
+
         return res.json({ success: true });
         
     } catch (error) {
