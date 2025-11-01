@@ -115,6 +115,14 @@ app.post('/webhook-pago', async (req, res) => {
         // Identificar actor (usuario/admin/sistema)
         const actor = identificarActor(message);
 
+        logInfo('webhook-pago', 'Actor identificado', {
+            actor,
+            from: message.from,
+            from_me: message.from_me,
+            source: message.source || 'N/A',
+            BOT_NUMBER
+        });
+
         // Si es del bot/sistema, ignorar
         if (message.from === BOT_NUMBER && actor === "sistema") {
             logInfo('webhook-pago', 'Mensaje del bot ignorado');
