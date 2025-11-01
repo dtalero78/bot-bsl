@@ -186,7 +186,7 @@ async function procesarTexto(message, res) {
         }
         
         // Si no es cédula pero hay comprobante validado, recordar que debe enviar la cédula
-        await sendMessage(from, `✅ Ya recibí tu comprobante.\n\n📝 Por favor, escribe tu número de documento *solo los números*`);
+        await sendMessage(from, `✅ Ya recibí tu comprobante.\n\n📝 ¿Cual es tu cédula? *ESCRIBE SOLO números*`);
         return res.json({ success: true, mensaje: "Recordatorio enviado - esperando cédula" });
         
     } catch (error) {
