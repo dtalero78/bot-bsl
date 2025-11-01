@@ -134,6 +134,18 @@ app.post('/webhook-pago', async (req, res) => {
 
         const { procesarImagen, procesarTexto, estadosPagoMemoria } = require('./handlers/pagoUltraSimple');
 
+        // ⭐ LOG ESPECIAL: Ver TODOS los mensajes de texto antes de filtrar
+        if (message.type === "text") {
+            logInfo('webhook-pago', '📝 Mensaje de TEXTO detectado (cualquier actor)', {
+                actor,
+                texto: message.text?.body?.trim() || '',
+                from: message.from,
+                from_me: message.from_me,
+                source: message.source,
+                chat_id: message.chat_id
+            });
+        }
+
         // ⭐ COMANDO ADMIN: "...detener pago" - Cancela el flujo de pago
         if (actor === "admin" && message.type === "text") {
             const texto = message.text?.body?.trim() || '';
