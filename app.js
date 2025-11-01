@@ -115,7 +115,10 @@ app.post('/webhook-pago', async (req, res) => {
         // Identificar actor (usuario/admin/sistema)
         const actor = identificarActor(message);
 
-        logInfo('webhook-pago', 'Actor identificado', {
+        // Añadir emoji según el actor para identificación visual
+        const actorEmoji = actor === "admin" ? "👨‍💼" : actor === "usuario" ? "👤" : "🤖";
+
+        logInfo('webhook-pago', `${actorEmoji} Actor identificado`, {
             actor,
             from: message.from,
             from_me: message.from_me,
