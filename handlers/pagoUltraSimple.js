@@ -27,21 +27,45 @@ async function procesarImagen(message, res) {
     
     try {
         logInfo('pagoUltraSimple', 'Imagen recibida', { userId });
-        
+
         // 1. Descargar imagen
         const imageId = message.image?.id;
         const mimeType = message.image?.mime_type || "image/jpeg";
         const urlImg = `https://gate.whapi.cloud/media/${imageId}`;
-        
+
+        logInfo('pagoUltraSimple', 'Intentando descargar imagen', {
+            userId,
+            imageId,
+            mimeType,
+            urlImg,
+            hasImageObject: !!message.image,
+            messageType: message.type
+        });
+
         const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
-        
+
         const whapiRes = await fetch(urlImg, {
             method: 'GET',
             headers: { "Authorization": `Bearer ${config.apis.whapi.key}` }
         });
 
+        logInfo('pagoUltraSimple', 'Respuesta de Whapi al descargar imagen', {
+            userId,
+            status: whapiRes.status,
+            statusText: whapiRes.statusText,
+            ok: whapiRes.ok
+        });
+
         if (!whapiRes.ok) {
-            throw new Error(`Error descargando imagen: ${whapiRes.status}`);
+            // Intentar obtener el body del error
+            const errorBody = await whapiRes.text();
+            logError('pagoUltraSimple', 'Error de Whapi al descargar imagen', {
+                userId,
+                status: whapiRes.status,
+                statusText: whapiRes.statusText,
+                errorBody
+            });
+            throw new Error(`Error descargando imagen: ${whapiRes.status} - ${errorBody}`);
         }
 
         const arrayBuffer = await whapiRes.arrayBuffer();
