@@ -197,5 +197,6 @@ async function procesarTexto(message, res) {
 
 module.exports = {
     procesarImagen,
-    procesarTexto
+    procesarTexto,
+    estadosPagoMemoria  // Exportar para permitir limpieza desde app.js
 };

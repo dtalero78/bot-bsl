@@ -112,32 +112,72 @@ app.post('/webhook-pago', async (req, res) => {
             mimeType: message.image?.mime_type || message.document?.mime_type || 'N/A'
         });
         
-        // Si es del bot, ignorar
-        if (message.from === BOT_NUMBER) {
+        // Identificar actor (usuario/admin/sistema)
+        const actor = identificarActor(message);
+
+        // Si es del bot/sistema, ignorar
+        if (message.from === BOT_NUMBER && actor === "sistema") {
             logInfo('webhook-pago', 'Mensaje del bot ignorado');
             return res.json({ success: true });
         }
-        
-        const { procesarImagen, procesarTexto } = require('./handlers/pagoUltraSimple');
 
-        // Rechazar documentos, stickers y otros tipos no soportados
-        if (message.type === "document" || message.type === "sticker" || message.type === "audio" || message.type === "video") {
-            logInfo('webhook-pago', 'Tipo de archivo no soportado rechazado', {
-                type: message.type,
-                from: message.from
-            });
-            await sendMessage(message.from, `❌ Solo puedo procesar *imágenes* de comprobantes de pago.\n\nPor favor, envía una *foto* (no documento PDF) de tu comprobante.`);
-            return res.json({ success: true, mensaje: "Tipo de archivo no soportado" });
+        const { procesarImagen, procesarTexto, estadosPagoMemoria } = require('./handlers/pagoUltraSimple');
+
+        // ⭐ COMANDO ADMIN: "...detener pago" - Cancela el flujo de pago
+        if (actor === "admin" && message.type === "text") {
+            const texto = message.text?.body?.trim() || '';
+
+            if (texto.includes('...detener pago')) {
+                // Para mensajes de admin, el userId está en chat_id (el usuario con quien habla)
+                const userId = extraerUserId(message.chat_id || message.from);
+
+                logInfo('webhook-pago', 'Comando admin "...detener pago" detectado', {
+                    userId,
+                    chatId: message.chat_id,
+                    from: message.from
+                });
+
+                // Limpiar estado de memoria
+                const tienEstado = estadosPagoMemoria.has(userId);
+                if (tienEstado) {
+                    estadosPagoMemoria.delete(userId);
+                    logInfo('webhook-pago', 'Estado de pago eliminado por admin', { userId });
+                } else {
+                    logInfo('webhook-pago', 'No había estado de pago para eliminar', { userId });
+                }
+
+                return res.json({
+                    success: true,
+                    mensaje: "Flujo de pago cancelado por admin",
+                    estadoEliminado: tienEstado
+                });
+            }
+
+            // Otros mensajes de admin se ignoran
+            return res.json({ success: true, mensaje: "Mensaje de admin ignorado" });
         }
 
-        // IMAGEN -> Validar con OpenAI y pedir documento
-        if (message.type === "image") {
-            return await procesarImagen(message, res);
-        }
+        // Solo procesar mensajes de USUARIOS
+        if (actor === "usuario") {
+            // Rechazar documentos, stickers y otros tipos no soportados
+            if (message.type === "document" || message.type === "sticker" || message.type === "audio" || message.type === "video") {
+                logInfo('webhook-pago', 'Tipo de archivo no soportado rechazado', {
+                    type: message.type,
+                    from: message.from
+                });
+                await sendMessage(message.from, `❌ Solo puedo procesar *imágenes* de comprobantes de pago.\n\nPor favor, envía una *foto* (no documento PDF) de tu comprobante.`);
+                return res.json({ success: true, mensaje: "Tipo de archivo no soportado" });
+            }
 
-        // TEXTO -> Si es cédula, procesar pago inmediatamente
-        if (message.type === "text") {
-            return await procesarTexto(message, res);
+            // IMAGEN -> Validar con OpenAI y pedir documento
+            if (message.type === "image") {
+                return await procesarImagen(message, res);
+            }
+
+            // TEXTO -> Si es cédula, procesar pago inmediatamente
+            if (message.type === "text") {
+                return await procesarTexto(message, res);
+            }
         }
 
         return res.json({ success: true });
