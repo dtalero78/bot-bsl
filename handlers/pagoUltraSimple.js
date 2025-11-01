@@ -5,18 +5,16 @@ const { sendPdf } = require('../utils/pdf');
 const { esCedula } = require('../utils/validaciones');
 const { extraerUserId, logInfo, logError } = require('../utils/shared');
 const { config } = require('../config/environment');
-const { 
-    guardarEstadoPagoTemporal, 
-    verificarEstadoPagoTemporal, 
-    limpiarEstadoPagoTemporal 
-} = require('../utils/dbAPI');
 
 /**
  * SÚPER ULTRA SIMPLE:
- * - Imagen -> Pedir documento 
+ * - Imagen -> Pedir documento
  * - Texto que sea cédula -> Procesar pago
  * SIN NIVELES, SIN BD, SIN COMPLICACIONES
+ *
+ * Estado en memoria (temporal) - se pierde al reiniciar servidor
  */
+const estadosPagoMemoria = new Map(); // userId -> { validado: boolean, timestamp: number }
 
 /**
  * Procesar imagen - VALIDAR con OpenAI que sea comprobante
@@ -84,12 +82,17 @@ async function procesarImagen(message, res) {
             return res.json({ success: true, mensaje: "Imagen rechazada" });
         }
         
-        // 3. Si SÍ es comprobante válido, guardar estado temporal
-        await guardarEstadoPagoTemporal(userId);
-        
+        // 3. Si SÍ es comprobante válido, guardar estado en memoria
+        estadosPagoMemoria.set(userId, {
+            validado: true,
+            timestamp: Date.now()
+        });
+
+        logInfo('pagoUltraSimple', 'Estado guardado en memoria', { userId });
+
         // 4. Pedir documento
         const mensaje = `✅ Escribe tu número de documento *solo los números*`;
-        
+
         await sendMessage(from, mensaje);
         
         return res.json({ success: true });
@@ -117,30 +120,27 @@ async function procesarTexto(message, res) {
             hasTextBody: message.text?.body ? 'yes' : 'no'
         });
         
-        // Primero verificar si hay un comprobante validado previamente
-        const estadoTemporal = await verificarEstadoPagoTemporal(userId);
+        // Verificar si hay un comprobante validado en memoria
+        const estadoMemoria = estadosPagoMemoria.get(userId);
 
-        logInfo('pagoUltraSimple', 'Estado temporal verificado', {
-            userId,
-            estadoValidado: estadoTemporal?.validado || false,
-            estadoCancelado: estadoTemporal?.cancelado || false,
-            estadoCompleto: JSON.stringify(estadoTemporal)
-        });
-
-        // Si está cancelado por admin, ignorar completamente
-        if (estadoTemporal?.cancelado) {
-            logInfo('pagoUltraSimple', 'Proceso cancelado por admin - ignorando mensaje', {
-                userId,
-                texto
-            });
-            return res.json({ success: true, mensaje: "Proceso cancelado por admin" });
+        // Limpiar estados expirados (más de 30 minutos)
+        if (estadoMemoria && (Date.now() - estadoMemoria.timestamp) > 30 * 60 * 1000) {
+            estadosPagoMemoria.delete(userId);
+            logInfo('pagoUltraSimple', 'Estado expirado y eliminado', { userId });
         }
 
+        const estadoActual = estadosPagoMemoria.get(userId);
+
+        logInfo('pagoUltraSimple', 'Estado verificado en memoria', {
+            userId,
+            tieneEstado: !!estadoActual,
+            validado: estadoActual?.validado || false
+        });
+
         // Si NO hay comprobante previo, ignorar CUALQUIER texto (incluyendo cédulas)
-        if (!estadoTemporal || !estadoTemporal.validado) {
-            logInfo('pagoUltraSimple', 'Ignorando texto - sin comprobante previo', {
+        if (!estadoActual || !estadoActual.validado) {
+            logInfo('pagoUltraSimple', 'Ignorando texto - sin comprobante previo o expirado', {
                 userId,
-                estadoTemporal: JSON.stringify(estadoTemporal),
                 texto
             });
             return res.json({ success: true, mensaje: "Texto ignorado - esperando imagen primero" });
@@ -163,8 +163,9 @@ async function procesarTexto(message, res) {
                 return res.json({ success: false });
             }
             
-            // Limpiar estado temporal después de procesar exitosamente
-            await limpiarEstadoPagoTemporal(userId);
+            // Limpiar estado de memoria después de procesar exitosamente
+            estadosPagoMemoria.delete(userId);
+            logInfo('pagoUltraSimple', 'Estado limpiado de memoria', { userId });
             
             // Generar y enviar PDF
             try {
