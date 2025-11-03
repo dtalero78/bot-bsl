@@ -182,14 +182,13 @@ app.post('/webhook-pago', async (req, res) => {
 
         // Solo procesar mensajes de USUARIOS
         if (actor === "usuario") {
-            // Rechazar documentos, stickers y otros tipos no soportados
+            // Ignorar silenciosamente documentos, stickers y otros tipos no soportados
             if (message.type === "document" || message.type === "sticker" || message.type === "audio" || message.type === "video") {
-                logInfo('webhook-pago', 'Tipo de archivo no soportado rechazado', {
+                logInfo('webhook-pago', 'Tipo de archivo no soportado - ignorado silenciosamente', {
                     type: message.type,
                     from: message.from
                 });
-                await sendMessage(message.from, `❌ Solo puedo procesar *imágenes* de comprobantes de pago.\n\nPor favor, envía una *foto* (no documento PDF) de tu comprobante.`);
-                return res.json({ success: true, mensaje: "Tipo de archivo no soportado" });
+                return res.json({ success: true, mensaje: "Tipo de archivo ignorado" });
             }
 
             // IMAGEN -> Validar con OpenAI y pedir documento
