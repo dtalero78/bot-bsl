@@ -17,12 +17,59 @@ const { config } = require('../config/environment');
 const estadosPagoMemoria = new Map(); // userId -> { validado: boolean, timestamp: number }
 
 /**
+ * Descargar imagen con reintentos
+ */
+async function descargarImagenConReintentos(urlImg, maxReintentos = 3) {
+    const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+
+    for (let intento = 1; intento <= maxReintentos; intento++) {
+        try {
+            logInfo('pagoUltraSimple', `Intento ${intento} de descarga`, { urlImg });
+
+            const whapiRes = await fetch(urlImg, {
+                method: 'GET',
+                headers: { "Authorization": `Bearer ${config.apis.whapi.key}` },
+                timeout: 30000
+            });
+
+            if (!whapiRes.ok) {
+                const errorBody = await whapiRes.text();
+                throw new Error(`HTTP ${whapiRes.status}: ${errorBody}`);
+            }
+
+            const arrayBuffer = await whapiRes.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+
+            logInfo('pagoUltraSimple', 'Imagen descargada exitosamente', {
+                tamaño: buffer.length,
+                intento
+            });
+
+            return buffer;
+
+        } catch (error) {
+            logError('pagoUltraSimple', `Error en intento ${intento}`, {
+                error: error.message,
+                urlImg
+            });
+
+            if (intento === maxReintentos) {
+                throw error; // Si es el último intento, lanzar el error
+            }
+
+            // Esperar antes de reintentar (backoff exponencial)
+            await new Promise(resolve => setTimeout(resolve, 1000 * intento));
+        }
+    }
+}
+
+/**
  * Procesar imagen - VALIDAR con OpenAI que sea comprobante
  */
 async function procesarImagen(message, res) {
     const from = message.from;
     const userId = extraerUserId(from);
-    
+
     try {
         logInfo('pagoUltraSimple', 'Imagen recibida', { userId });
 
@@ -40,34 +87,8 @@ async function procesarImagen(message, res) {
             messageType: message.type
         });
 
-        const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
-
-        const whapiRes = await fetch(urlImg, {
-            method: 'GET',
-            headers: { "Authorization": `Bearer ${config.apis.whapi.key}` }
-        });
-
-        logInfo('pagoUltraSimple', 'Respuesta de Whapi al descargar imagen', {
-            userId,
-            status: whapiRes.status,
-            statusText: whapiRes.statusText,
-            ok: whapiRes.ok
-        });
-
-        if (!whapiRes.ok) {
-            // Intentar obtener el body del error
-            const errorBody = await whapiRes.text();
-            logError('pagoUltraSimple', 'Error de Whapi al descargar imagen', {
-                userId,
-                status: whapiRes.status,
-                statusText: whapiRes.statusText,
-                errorBody
-            });
-            throw new Error(`Error descargando imagen: ${whapiRes.status} - ${errorBody}`);
-        }
-
-        const arrayBuffer = await whapiRes.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
+        // Descargar con reintentos automáticos
+        const buffer = await descargarImagenConReintentos(urlImg);
         const base64Image = buffer.toString('base64');
         
         // 2. VALIDAR CON OPENAI QUE SEA COMPROBANTE DE PAGO
